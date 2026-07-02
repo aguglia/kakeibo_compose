@@ -54,6 +54,12 @@ fun MainScreen() {
                     onClick = { selectedTab = 2; scope.launch { drawerState.close() } },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                 )
+                NavigationDrawerItem(
+                    label = { Text("⚙️ カテゴリ・予算管理") },
+                    selected = selectedTab == 3,
+                    onClick = { selectedTab = 3; scope.launch { drawerState.close() } },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
             }
         }
     ) {
@@ -88,6 +94,7 @@ fun MainScreen() {
                     0 -> InputScreen(isIncome = false, totalAsset = totalAsset, thisMonthExpense = thisMonthExpense, commonCategories = expenseCategories, viewModel = viewModel)
                     1 -> InputScreen(isIncome = true, totalAsset = totalAsset, thisMonthExpense = thisMonthExpense, commonCategories = incomeCategories, viewModel = viewModel)
                     2 -> HistoryScreen(kakeiboList = kakeiboList)
+                    3 -> CategoryManagementScreen(viewModel = viewModel)
                 }
             }
         }

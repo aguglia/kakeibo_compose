@@ -1,5 +1,6 @@
 package com.example.kakeibo_compose.data.repository
 
+import com.example.kakeibo_compose.data.entity.BudgetEntity
 import com.example.kakeibo_compose.data.entity.MiddleCategoryEntity
 import com.example.kakeibo_compose.data.entity.SubCategoryEntity
 import com.example.kakeibo_compose.data.entity.KakeiboEntity
@@ -28,11 +29,20 @@ class KakeiboRepository(private val kakeiboDao: KakeiboDao) {
     }
 
     // 重複チェックの仲介
-    suspend fun isSubCategoryDuplicate(middleCategoryId: Int, name: String): Boolean {
-        return kakeiboDao.getSubCategoryCount(middleCategoryId, name) > 0
+    suspend fun isSubCategoryDuplicate(middleCategoryId: Int, name: String, excludeId: Int): Boolean {
+        return kakeiboDao.getSubCategoryCount(middleCategoryId, name, excludeId) > 0
     }
 
-    suspend fun isMiddleCategoryDuplicate(isIncome: Boolean, name: String): Boolean {
-        return kakeiboDao.getMiddleCategoryCount(isIncome, name) > 0
+    fun getSubCategoriesByMiddle(middleCategoryId: Int): Flow<List<SubCategoryEntity>> = kakeiboDao.getSubCategoriesByMiddle(middleCategoryId)
+
+
+    suspend fun updateMiddleCategoryName(id: Int, newName: String) { kakeiboDao.updateMiddleCategoryName(id, newName) }
+    suspend fun updateSubCategoryName(id: Int, newName: String) { kakeiboDao.updateSubCategoryName(id, newName) }
+
+    suspend fun isMiddleCategoryDuplicate(isIncome: Boolean, name: String, excludeId: Int): Boolean {
+        return kakeiboDao.getMiddleCategoryCount(isIncome, name, excludeId) > 0
     }
+
+    val allBudgets: Flow<List<BudgetEntity>> = kakeiboDao.getAllBudgets()
+    suspend fun saveBudget(budget: BudgetEntity) { kakeiboDao.insertOrUpdateBudget(budget) }
 }

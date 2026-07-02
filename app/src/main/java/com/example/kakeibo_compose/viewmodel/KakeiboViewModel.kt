@@ -3,6 +3,7 @@ package com.example.kakeibo_compose.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.kakeibo_compose.data.entity.BudgetEntity
 import com.example.kakeibo_compose.data.entity.MiddleCategoryEntity
 import com.example.kakeibo_compose.data.entity.SubCategoryEntity
 import com.example.kakeibo_compose.data.entity.KakeiboEntity
@@ -60,8 +61,7 @@ class KakeiboViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * 💡 【その場登録用】新しい中カテゴリを追加する（重複がなければ登録）
-     * 登録成功時に、画面側に通知できるようコールバック（onResult）を付けています。
+     * 【その場登録用】新しい中カテゴリを追加する（新規なので除外IDは0）
      */
     fun addMiddleCategory(name: String, isIncome: Boolean, onResult: (Boolean, String) -> Unit) {
         val trimmedName = name.trim()
@@ -70,7 +70,7 @@ class KakeiboViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         viewModelScope.launch {
-            if (repository.isMiddleCategoryDuplicate(isIncome, trimmedName)) {
+            if (repository.isMiddleCategoryDuplicate(isIncome, trimmedName, excludeId = 0)) { // 💡 excludeIdに0を指定
                 onResult(false, "既に同じ名前の中カテゴリが存在します")
             } else {
                 repository.insertMiddleCategory(MiddleCategoryEntity(name = trimmedName, isIncome = isIncome))
@@ -80,7 +80,7 @@ class KakeiboViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * 💡 【その場登録用】新しい小カテゴリを追加する（同じ中カテゴリ内に同名がなければ登録）
+     * 【その場登録用】新しい小カテゴリを追加する（新規なので除外IDは0）
      */
     fun addSubCategory(middleCategoryId: Int, name: String, onResult: (Boolean, String) -> Unit) {
         val trimmedName = name.trim()
@@ -93,12 +93,61 @@ class KakeiboViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         viewModelScope.launch {
-            if (repository.isSubCategoryDuplicate(middleCategoryId, trimmedName)) {
+            if (repository.isSubCategoryDuplicate(middleCategoryId, trimmedName, excludeId = 0)) { // 💡 excludeIdに0を指定
                 onResult(false, "この中カテゴリ内に既に同じ小カテゴリが存在します")
             } else {
                 repository.insertSubCategory(SubCategoryEntity(middleCategoryId = middleCategoryId, name = trimmedName))
                 onResult(true, "小カテゴリを追加しました")
             }
         }
+    }
+
+    /**
+     * 【修正】中カテゴリ名の変更（自分のIDを除外して重複チェック）
+     */
+    fun updateMiddleCategoryName(id: Int, isIncome: Boolean, newName: String, onResult: (Boolean, String) -> Unit) {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty()) return onResult(false, "名前を入力してください")
+        viewModelScope.launch {
+            if (repository.isMiddleCategoryDuplicate(isIncome, trimmed, excludeId = id)) { // 💡 自分のIDを渡す！
+                onResult(false, "既に他のカテゴリで同じ名前が使われています")
+            } else {
+                repository.updateMiddleCategoryName(id, trimmed)
+                onResult(true, "中カテゴリ名を変更しました")
+            }
+        }
+    }
+
+    /**
+     * 【修正】小カテゴリ名の変更（自分のIDを除外して重複チェック）
+     */
+    fun updateSubCategoryName(id: Int, middleCategoryId: Int, newName: String, onResult: (Boolean, String) -> Unit) {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty()) return onResult(false, "名前を入力してください")
+        viewModelScope.launch {
+            if (repository.isSubCategoryDuplicate(middleCategoryId, trimmed, excludeId = id)) { // 💡 自分のIDを渡す！
+                onResult(false, "この中カテゴリ内に既に同じ名前の小カテゴリがあります")
+            } else {
+                repository.updateSubCategoryName(id, trimmed)
+                onResult(true, "小カテゴリ名を変更しました")
+            }
+        }
+    }
+
+    // 固定予算マスターを全件監視
+    val allBudgets = repository.allBudgets
+
+    // 💡 予算の保存（月の概念を無くし、純粋に中カテゴリに金額を紐付けるだけ！）
+    fun saveBudget(middleCategoryId: Int, amount: Int) {
+        viewModelScope.launch {
+            repository.saveBudget(
+                BudgetEntity(middleCategoryId = middleCategoryId, amount = amount)
+            )
+        }
+    }
+
+    // 💡 【これを追加！】特定の中カテゴリに紐づく小カテゴリのストリームをUIに中継します
+    fun getSubCategoriesByMiddle(middleCategoryId: Int): Flow<List<SubCategoryEntity>> {
+        return repository.getSubCategoriesByMiddle(middleCategoryId)
     }
 }

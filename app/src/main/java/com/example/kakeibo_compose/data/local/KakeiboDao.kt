@@ -3,6 +3,7 @@ package com.example.kakeibo_compose.data.local
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
+import com.example.kakeibo_compose.data.entity.BudgetEntity
 import com.example.kakeibo_compose.data.entity.MiddleCategoryEntity
 import com.example.kakeibo_compose.data.entity.SubCategoryEntity
 import com.example.kakeibo_compose.data.entity.KakeiboEntity
@@ -32,13 +33,19 @@ interface KakeiboDao {
     """)
     fun getMiddleCategories(isIncome: Boolean): Flow<List<MiddleCategoryEntity>>
 
-    // 💡 【重複チェック用】選択された中カテゴリの中に、すでに同じ名前の小カテゴリがあるか件数を数える
-    @Query("SELECT COUNT(*) FROM sub_category_table WHERE middle_category_id = :middleCategoryId AND name = :name")
-    suspend fun getSubCategoryCount(middleCategoryId: Int, name: String): Int
+    // 💡 【修正】自分以外のIDで、同じ名前の中カテゴリ（支出/収入別）があるか数える
+    @Query("""
+        SELECT COUNT(*) FROM middle_category_table 
+        WHERE is_income = :isIncome AND name = :name AND id != :excludeId
+    """)
+    suspend fun getMiddleCategoryCount(isIncome: Boolean, name: String, excludeId: Int): Int
 
-    // 💡 【重複チェック用】すでに同じ名前の中カテゴリ（支出/収入別）があるか件数を数える
-    @Query("SELECT COUNT(*) FROM middle_category_table WHERE is_income = :isIncome AND name = :name")
-    suspend fun getMiddleCategoryCount(isIncome: Boolean, name: String): Int
+    // 💡 【修正】自分以外のIDで、同じ中カテゴリ内に同じ名前の小カテゴリがあるか数える
+    @Query("""
+        SELECT COUNT(*) FROM sub_category_table 
+        WHERE middle_category_id = :middleCategoryId AND name = :name AND id != :excludeId
+    """)
+    suspend fun getSubCategoryCount(middleCategoryId: Int, name: String, excludeId: Int): Int
 
     @Query("""
         SELECT 
@@ -66,4 +73,27 @@ interface KakeiboDao {
         ORDER BY COUNT(k.id) DESC, s.id ASC
     """)
     fun getCommonSubCategories(isIncome: Boolean): Flow<List<SubCategoryEntity>>
+
+    // --- カテゴリ管理・予算機能用 ---
+
+    // 中カテゴリの名前変更
+    @Query("UPDATE middle_category_table SET name = :newName WHERE id = :id")
+    suspend fun updateMiddleCategoryName(id: Int, newName: String)
+
+    // 小カテゴリの名前変更
+    @Query("UPDATE sub_category_table SET name = :newName WHERE id = :id")
+    suspend fun updateSubCategoryName(id: Int, newName: String)
+
+    // 特定の中カテゴリに紐づく小カテゴリを（並び順関係なく）素直に全部取る
+    @Query("SELECT * FROM sub_category_table WHERE middle_category_id = :middleCategoryId ORDER BY id ASC")
+    fun getSubCategoriesByMiddle(middleCategoryId: Int): Flow<List<SubCategoryEntity>>
+
+
+    // 予算の保存（あれば上書き、なければ挿入）
+    @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdateBudget(budget: BudgetEntity)
+
+    // 💡 全ての中カテゴリの固定予算マスターをそのまま全件取得する
+    @Query("SELECT * FROM budget_table")
+    fun getAllBudgets(): Flow<List<BudgetEntity>>
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import com.example.kakeibo_compose.data.entity.BudgetEntity
 import com.example.kakeibo_compose.data.entity.MiddleCategoryEntity
 import com.example.kakeibo_compose.data.entity.SubCategoryEntity
 import com.example.kakeibo_compose.data.entity.KakeiboEntity
@@ -13,9 +14,10 @@ import com.example.kakeibo_compose.data.entity.KakeiboEntity
     entities = [
         MiddleCategoryEntity::class,
         SubCategoryEntity::class,
-        KakeiboEntity::class
+        KakeiboEntity::class,
+        BudgetEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class KakeiboDatabase : RoomDatabase() {
