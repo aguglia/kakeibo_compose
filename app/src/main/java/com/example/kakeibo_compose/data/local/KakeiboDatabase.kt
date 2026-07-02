@@ -4,10 +4,20 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import com.example.kakeibo_compose.data.entity.KakeiboEntity // 👈 ここを entity パッケージからのインポートに書き換えます！
-import com.example.kakeibo_compose.data.local.KakeiboDao
+import com.example.kakeibo_compose.data.entity.MiddleCategoryEntity
+import com.example.kakeibo_compose.data.entity.SubCategoryEntity
+import com.example.kakeibo_compose.data.entity.KakeiboEntity
 
-@Database(entities = [KakeiboEntity::class], version = 1, exportSchema = false)
+// 💡 確実に3つのクラスが認識されるように明示します
+@Database(
+    entities = [
+        MiddleCategoryEntity::class,
+        SubCategoryEntity::class,
+        KakeiboEntity::class
+    ],
+    version = 2,
+    exportSchema = false
+)
 abstract class KakeiboDatabase : RoomDatabase() {
     abstract fun kakeiboDao(): KakeiboDao
 
@@ -21,7 +31,9 @@ abstract class KakeiboDatabase : RoomDatabase() {
                     context.applicationContext,
                     KakeiboDatabase::class.java,
                     "kakeibo_database"
-                ).build()
+                )
+                    .fallbackToDestructiveMigration(true) // バージョンアップ時にDBを安全に再構築
+                    .build()
                 INSTANCE = instance
                 instance
             }

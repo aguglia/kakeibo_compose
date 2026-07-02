@@ -2,7 +2,7 @@ package com.example.kakeibo_compose.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.* // 💡 これにより getValue / setValue が正しくインポートされます
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -17,16 +17,16 @@ fun MainScreen() {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
-    // 💡 別パッケージになった ViewModel を呼び出す
     val viewModel: KakeiboViewModel = viewModel()
 
-    // 💡 collectAsState の「initial」も最新の Kotlin 2.2 仕様に合わせてあります
+    // 💡 collectAsState のインポートエラーを解消し、型安全にデータを取得します
     val kakeiboList by viewModel.allItems.collectAsState(initial = emptyList())
-    val totalAsset by viewModel.totalAsset.collectAsState(0)
-    val thisMonthExpense by viewModel.thisMonthExpense.collectAsState(0)
+    val totalAsset by viewModel.totalAsset.collectAsState(initial = 0)
+    val thisMonthExpense by viewModel.thisMonthExpense.collectAsState(initial = 0)
 
-    val expenseCategories by viewModel.commonExpenseCategories.collectAsState(initial = emptyList())
-    val incomeCategories by viewModel.commonIncomeCategories.collectAsState(initial = emptyList())
+    // 💡 型が List<SubCategoryEntity> に進化したデータを受け取ります
+    val expenseCategories by viewModel.commonExpenseSubCategories.collectAsState(initial = emptyList())
+    val incomeCategories by viewModel.commonIncomeSubCategories.collectAsState(initial = emptyList())
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -82,6 +82,8 @@ fun MainScreen() {
             }
         ) { innerPadding ->
             Box(modifier = Modifier.padding(innerPadding)) {
+                // 💡 ※ InputScreen 側はまだ修正前の古い状態なので一時的に赤文字になる可能性がありますが、
+                // 次のステップで InputScreen を完全固定選択＋ポップアップ追加仕様に大改造して一撃で解消します！
                 when (selectedTab) {
                     0 -> InputScreen(isIncome = false, totalAsset = totalAsset, thisMonthExpense = thisMonthExpense, commonCategories = expenseCategories, viewModel = viewModel)
                     1 -> InputScreen(isIncome = true, totalAsset = totalAsset, thisMonthExpense = thisMonthExpense, commonCategories = incomeCategories, viewModel = viewModel)

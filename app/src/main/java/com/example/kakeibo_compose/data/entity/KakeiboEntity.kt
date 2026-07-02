@@ -2,17 +2,27 @@ package com.example.kakeibo_compose.data.entity
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "kakeibo_table")
+@Entity(
+    tableName = "kakeibo_table",
+    foreignKeys = [
+        ForeignKey(
+            entity = SubCategoryEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["sub_category_id"],
+            onDelete = ForeignKey.RESTRICT
+        )
+    ],
+    // 👇 【ここを追加！】Roomからの警告（Warning）を消し、テーブル結合を爆速にするためのインデックスです
+    indices = [Index(value = ["sub_category_id"])]
+)
 data class KakeiboEntity(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val date: String,       // 日付 (yyyy-MM-dd)
-
-    // 👇 【ここを追加！】Roomに「DBの中では is_income って名前にしてね」と明示します
-    @ColumnInfo(name = "is_income") val isIncome: Boolean,
-
-    val category: String,   // カテゴリ名
-    val amount: Int,        // 金額
-    val memo: String        // メモ
+    val date: String,
+    @ColumnInfo(name = "sub_category_id") val subCategoryId: Int,
+    val amount: Int,
+    val memo: String
 )
