@@ -3,6 +3,7 @@ package com.example.kakeibo_compose.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.combine
 import com.example.kakeibo_compose.data.entity.BudgetEntity
 import com.example.kakeibo_compose.data.entity.CategorySelectionItem
 import com.example.kakeibo_compose.data.entity.MiddleCategoryEntity
@@ -34,9 +35,31 @@ class KakeiboViewModel(application: Application) : AndroidViewModel(application)
         return repository.getMiddleCategories(isIncome)
     }
 
-    // 💡 総資産の計算（KakeiboDisplayItemの型に合わせて正しく計算）
-    val totalAsset = allItems.map { items ->
+    // 💡 計算元をシステムデータ込の全件（allRawDisplayItems）にするだけ！
+    // 初期費用は isIncome = true (収入) で入っているので、自動的にプラスとして計算されます。
+    val totalAsset = repository.allRawDisplayItems.map { items ->
         items.sumOf { if (it.isIncome) it.amount else -it.amount }
+    }
+
+    // 💡 初回起動時の保存も、ただシステムフラグを true にして保存するだけ！
+    fun saveInitialAsset(amount: Int) {
+        viewModelScope.launch {
+            val currentDate = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+            repository.insertKakeibo(
+                KakeiboEntity(
+                    date = currentDate,
+                    subCategoryId = 1, // 自動投入されたシステム用小カテゴリのID
+                    amount = amount,
+                    memo = "初期資産",
+                    isSystem = true // 💡 ここをtrueにする
+                )
+            )
+        }
+    }
+
+    // 💡 初期登録済みかどうかの判定も、全件の中に1件でもシステムデータがあるかで一発判定
+    val hasInitialAsset = repository.allRawDisplayItems.map { items ->
+        items.any { it.middleCategoryName == "初期費用" } // あるいはシステム用フラグで判定
     }
 
     // 💡 今月の出費の計算（KakeiboDisplayItemの型に合わせて正しくフィルタリング）
@@ -279,6 +302,17 @@ class KakeiboViewModel(application: Application) : AndroidViewModel(application)
                 repository.deleteSubCategoryById(subId) // お持ちの小カテゴリ削除クエリ
                 onResult(true, "小カテゴリを削除しました")
             }
+        }
+    }
+
+    // 中カテゴリIDと現在の月（例: "2026-07"）を渡すと、残予算（予算 - 支出）を返すFlow
+    fun getRemainingBudget(middleCategoryId: Int, monthQuery: String): Flow<Int?> {
+        val budgetFlow = repository.getBudgetAmount(middleCategoryId)
+        val expenseFlow = repository.getMiddleCategoryExpenseSum(middleCategoryId, monthQuery)
+
+        return combine(budgetFlow, expenseFlow) { budget, expense ->
+            // 💡 予算が設定されていない（0円）場合は、予算管理外として null を返すか、マイナス表示にするか選べます
+            if (budget == 0) null else budget - expense
         }
     }
 }

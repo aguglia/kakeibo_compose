@@ -16,6 +16,8 @@ import com.example.kakeibo_compose.data.entity.CategorySelectionItem
 import com.example.kakeibo_compose.data.entity.MiddleCategoryEntity
 import com.example.kakeibo_compose.viewmodel.KakeiboViewModel
 
+import kotlinx.coroutines.flow.flowOf // 💡 追加
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InputScreen(
@@ -35,12 +37,25 @@ fun InputScreen(
 
     // DBからリストを取得
     val categoryList by viewModel.getCategorySelectionList(isIncome).collectAsState(initial = emptyList())
-    // 💡 ダイアログで「既存の中カテゴリ」を選ぶために、中カテゴリの一覧も取得しておく
     val middleCategories by viewModel.getMiddleCategories(isIncome).collectAsState(initial = emptyList())
+
+    // 💡 今日の日付から「今月(yyyy-MM)」の文字列を作る
+    val currentMonthQuery = remember {
+        java.text.SimpleDateFormat("yyyy-MM", java.util.Locale.getDefault()).format(java.util.Date())
+    }
+
+    // 💡 選択されたカテゴリの残予算を監視するFlow
+    val remainingBudget by remember(selectedCategory) {
+        if (selectedCategory != null && !isIncome) {
+            viewModel.getRemainingBudget(selectedCategory!!.middleId, currentMonthQuery)
+        } else {
+            flowOf(null)
+        }
+    }.collectAsState(initial = null)
 
     // UIの開閉状態
     var expanded by remember { mutableStateOf(false) }
-    var showAddSubDialog by remember { mutableStateOf(false) } // 💡 小カテゴリ追加ダイアログの表示状態
+    var showAddSubDialog by remember { mutableStateOf(false) }
 
     // タブが切り替わったら選択をリセット
     LaunchedEffect(isIncome) {
@@ -90,7 +105,6 @@ fun InputScreen(
                     label = { Text("カテゴリ（必須）") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                     colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
-                    // 前回の警告対応済みのコード
                     modifier = Modifier
                         .menuAnchor(type = ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                         .fillMaxWidth()
@@ -119,7 +133,6 @@ fun InputScreen(
                 }
             }
 
-            // ➕ 小カテゴリ追加ボタン（復活！）
             Button(
                 onClick = {
                     if (middleCategories.isEmpty()) {
@@ -135,7 +148,57 @@ fun InputScreen(
             }
         }
 
-        // 🔢 金額入力
+        // 💡 ----------------------------------------------------
+        // 📊 位置固定型の残予算表示スペース
+        // ----------------------------------------------------
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp), // 👈 常時高さを固定して、下の入力欄が動くのを防ぐ！
+            contentAlignment = Alignment.CenterStart
+        ) {
+            if (!isIncome && selectedCategory != null) {
+                remainingBudget?.let { budget ->
+                    val isOverBudget = budget < 0
+                    Card(
+                        modifier = Modifier.fillMaxSize(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isOverBudget) Color(0xFFFFEBEE) else Color(0xFFE8F5E9)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp).fillMaxSize(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${selectedCategory!!.middleName} の今月残予算:",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isOverBudget) Color(0xFFC62828) else Color(0xFF2E7D32)
+                            )
+                            Text(
+                                text = "$budget 円",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isOverBudget) Color(0xFFC62828) else Color(0xFF2E7D32)
+                            )
+                        }
+                    }
+                } ?: run {
+                    // 予算未設定時の薄いメッセージ表示（ここも同じ高さに収まるようにします）
+                    Text(
+                        text = "💡 ${selectedCategory!!.middleName} には今月の予算が設定されていません。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+                }
+            }
+            // 💡 収入時、またはカテゴリ未選択時はここが完全に空（透明）になり、下のパーツ位置を保ちます
+        }
+
+        // 🔢 金額入力（カテゴリを選んでも、ここより下のパーツは一切位置が変わりません！）
         OutlinedTextField(
             value = amountText,
             onValueChange = { amountText = it },
@@ -169,14 +232,12 @@ fun InputScreen(
                     return@Button
                 }
 
-                // 保存実行
                 viewModel.saveItem(
                     subCategoryId = selectedCategory!!.subId,
                     amount = amount,
                     memo = memoText
                 )
 
-                // フォームリセット
                 amountText = ""
                 memoText = ""
                 selectedCategory = null

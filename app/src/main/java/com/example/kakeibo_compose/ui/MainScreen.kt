@@ -23,6 +23,7 @@ fun MainScreen() {
     val kakeiboList by viewModel.allItems.collectAsState(initial = emptyList())
     val totalAsset by viewModel.totalAsset.collectAsState(initial = 0)
     val thisMonthExpense by viewModel.thisMonthExpense.collectAsState(initial = 0)
+    val hasInitialAsset by viewModel.hasInitialAsset.collectAsState(initial = true)
 
     // 💡 型が List<SubCategoryEntity> に進化したデータを受け取ります
     val expenseCategories by viewModel.commonExpenseSubCategories.collectAsState(initial = emptyList())
@@ -63,6 +64,43 @@ fun MainScreen() {
             }
         }
     ) {
+        // 👇 【ここを追加！】初回起動時（初期資産が未登録）のみ表示される強制ダイアログ
+        if (!hasInitialAsset) {
+            var inputAmount by remember { mutableStateOf("") }
+
+            AlertDialog(
+                onDismissRequest = { /* 強制なので外側タップでは閉じさせない */ },
+                title = { Text("👋 はじめに") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("現在の総資産（貯金額など）を入力してください。\nこの金額をスタートとして家計簿を開始します。")
+                        OutlinedTextField(
+                            value = inputAmount,
+                            onValueChange = { inputAmount = it },
+                            label = { Text("初期資産 (円)") },
+                            singleLine = true,
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val amount = inputAmount.toIntOrNull() ?: 0
+                            if (amount >= 0) {
+                                viewModel.saveInitialAsset(amount)
+                            }
+                        },
+                        enabled = inputAmount.isNotBlank() && inputAmount.toIntOrNull() != null
+                    ) {
+                        Text("登録して始める")
+                    }
+                }
+            )
+        }
         Scaffold(
             topBar = {
                 TopAppBar(

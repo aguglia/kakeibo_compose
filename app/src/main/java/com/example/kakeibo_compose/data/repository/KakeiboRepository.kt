@@ -9,6 +9,7 @@ import com.example.kakeibo_compose.data.entity.KakeiboEntity
 import com.example.kakeibo_compose.data.entity.KakeiboDisplayItem
 import com.example.kakeibo_compose.data.local.KakeiboDao
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 class KakeiboRepository(private val kakeiboDao: KakeiboDao) {
 
@@ -106,4 +107,17 @@ class KakeiboRepository(private val kakeiboDao: KakeiboDao) {
     suspend fun insertBudget(budget: BudgetEntity) {
         kakeiboDao.insertOrUpdateBudget(budget)
     }
+
+    fun getMiddleCategoryExpenseSum(middleCategoryId: Int, monthQuery: String): Flow<Int> {
+        return kakeiboDao.getMiddleCategoryExpenseSum(middleCategoryId, monthQuery).map { it ?: 0 }
+    }
+
+    fun getBudgetAmount(middleCategoryId: Int): Flow<Int> {
+        return kakeiboDao.getBudgetAmount(middleCategoryId).map { it ?: 0 }
+    }
+
+    // 総資産計算のためにシステムデータを含む生の家計簿データを取得
+    val allRawKakeiboItems: Flow<List<KakeiboEntity>> = kakeiboDao.getAllRawKakeiboItems()
+
+    val allRawDisplayItems: Flow<List<KakeiboDisplayItem>> = kakeiboDao.getAllRawDisplayItems()
 }
