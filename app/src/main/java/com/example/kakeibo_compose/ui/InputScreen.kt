@@ -28,6 +28,12 @@ fun InputScreen(
 ) {
     val context = LocalContext.current
 
+    // 💡 【ここを追記！】資産防衛ラインの状態をViewModelから引き込む
+    val isAssetInDanger by viewModel.isAssetInDanger.collectAsState(initial = false)
+    val minimumAsset by viewModel.minimumAsset.collectAsState(
+        initial = com.example.kakeibo_compose.data.local.SettingPreferences.DEFAULT_MINIMUM_ASSET
+    )
+
     // 入力フォームの状態
     var amountText by remember { mutableStateOf("") }
     var memoText by remember { mutableStateOf("") }
@@ -68,13 +74,38 @@ fun InputScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 💰 上部インフォメーションボード
-        Card(modifier = Modifier.fillMaxWidth()) {
+        // 💰 上部インフォメーションボード（防衛ライン割れでカラーが変わる仕様にアップデート！）
+        val cardColor = if (isAssetInDanger) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        val titleColor = if (isAssetInDanger) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant
+        val assetColor = if (isAssetInDanger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = cardColor) // 💡 状態によって背景色を動的に変更
+        ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("現在の総資産: $totalAsset 円", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "現在の総資産: $totalAsset 円",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = assetColor
+                )
                 if (!isIncome) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("今月の支出合計: $thisMonthExpense 円", style = MaterialTheme.typography.bodyMedium, color = Color.Red)
+                }
+
+                // 💡 【ここを追加！】防衛ラインを割り込んでいる時だけ、ヘッダー内に警告テキストをスマートに出現させる
+                if (isAssetInDanger) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    HorizontalDivider(color = titleColor.copy(alpha = 0.2f))
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "⚠️ 設定された最低維持資産（¥$minimumAsset）を下回っています！",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
             }
         }

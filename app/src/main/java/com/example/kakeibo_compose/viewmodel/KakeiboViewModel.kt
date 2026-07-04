@@ -11,6 +11,7 @@ import com.example.kakeibo_compose.data.entity.SubCategoryEntity
 import com.example.kakeibo_compose.data.entity.KakeiboEntity
 import com.example.kakeibo_compose.data.entity.MiddleCategoryWithBudget
 import com.example.kakeibo_compose.data.local.KakeiboDatabase
+import com.example.kakeibo_compose.data.local.SettingPreferences
 import com.example.kakeibo_compose.data.repository.KakeiboRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -24,6 +25,12 @@ class KakeiboViewModel(application: Application) : AndroidViewModel(application)
     private val repository: KakeiboRepository = KakeiboRepository(
         KakeiboDatabase.getDatabase(application).kakeiboDao()
     )
+
+    // 💡 SettingPreferences を初期化
+    private val settingPreferences = SettingPreferences(application)
+
+    // 💡 UI側でリアルタイム監視できる「最低維持資産」のFlow
+    val minimumAsset = settingPreferences.minimumAsset
 
     // 💡 MainScreenやHistoryScreenが呼び出しているプロパティ名を最新のRepositoryとガチッと結合！
     val allItems = repository.allDisplayItems
@@ -313,6 +320,19 @@ class KakeiboViewModel(application: Application) : AndroidViewModel(application)
         return combine(budgetFlow, expenseFlow) { budget, expense ->
             // 💡 予算が設定されていない（0円）場合は、予算管理外として null を返すか、マイナス表示にするか選べます
             if (budget == 0) null else budget - expense
+        }
+    }
+
+    // 💡 【ここがキモ！】総資産と最低維持資産をガチッと結合して、危険域（10万未満）かどうかを判定するFlow
+    // true = 防衛ラインを割り込んでいる（危険） / false = 安全圏
+    val isAssetInDanger = totalAsset.combine(minimumAsset) { total, min ->
+        total < min
+    }
+
+    // 💡 設定画面から呼ばれる、最低維持資産の保存関数
+    fun saveMinimumAsset(amount: Int) {
+        viewModelScope.launch {
+            settingPreferences.saveMinimumAsset(amount)
         }
     }
 }

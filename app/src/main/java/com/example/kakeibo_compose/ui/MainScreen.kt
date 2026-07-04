@@ -2,7 +2,7 @@ package com.example.kakeibo_compose.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.* // 💡 これにより getValue / setValue が正しくインポートされます
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -19,15 +19,10 @@ fun MainScreen() {
 
     val viewModel: KakeiboViewModel = viewModel()
 
-    // 💡 collectAsState のインポートエラーを解消し、型安全にデータを取得します
     val kakeiboList by viewModel.allItems.collectAsState(initial = emptyList())
     val totalAsset by viewModel.totalAsset.collectAsState(initial = 0)
     val thisMonthExpense by viewModel.thisMonthExpense.collectAsState(initial = 0)
     val hasInitialAsset by viewModel.hasInitialAsset.collectAsState(initial = true)
-
-    // 💡 型が List<SubCategoryEntity> に進化したデータを受け取ります
-    val expenseCategories by viewModel.commonExpenseSubCategories.collectAsState(initial = emptyList())
-    val incomeCategories by viewModel.commonIncomeSubCategories.collectAsState(initial = emptyList())
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -38,7 +33,7 @@ fun MainScreen() {
                 HorizontalDivider()
 
                 NavigationDrawerItem(
-                    label = { Text("✍️ 支出登録（初期画面）") },
+                    label = { Text("✍️ 支出登録") },
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0; scope.launch { drawerState.close() } },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
@@ -56,20 +51,28 @@ fun MainScreen() {
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                 )
                 NavigationDrawerItem(
-                    label = { Text("⚙️ カテゴリ・予算管理") },
+                    label = { Text("📁 カテゴリ・予算管理") },
                     selected = selectedTab == 3,
                     onClick = { selectedTab = 3; scope.launch { drawerState.close() } },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+
+                // 💡 【ここを追加！】ドロワーの最下部に設定画面への移動ボタンを配置
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                NavigationDrawerItem(
+                    label = { Text("⚙️ アプリ設定（目標・防衛ライン）") },
+                    selected = selectedTab == 4, // 💡 設定画面のタブ番号を「4」に指定
+                    onClick = { selectedTab = 4; scope.launch { drawerState.close() } },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                 )
             }
         }
     ) {
-        // 👇 【ここを追加！】初回起動時（初期資産が未登録）のみ表示される強制ダイアログ
         if (!hasInitialAsset) {
             var inputAmount by remember { mutableStateOf("") }
 
             AlertDialog(
-                onDismissRequest = { /* 強制なので外側タップでは閉じさせない */ },
+                onDismissRequest = { },
                 title = { Text("👋 はじめに") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -101,10 +104,18 @@ fun MainScreen() {
                 }
             )
         }
+
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("家計簿アプリ", fontWeight = FontWeight.Bold) },
+                    title = {
+                        // 💡 今開いている画面に合わせて上部のタイトルを優しく可変させます
+                        val barTitle = when (selectedTab) {
+                            4 -> "アプリ設定"
+                            else -> "家計簿アプリ"
+                        }
+                        Text(barTitle, fontWeight = FontWeight.Bold)
+                    },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
                             Text(text = "☰", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -118,6 +129,7 @@ fun MainScreen() {
                 )
             },
             bottomBar = {
+                // 💡 ボトムナビゲーションの下部3つと同期（設定画面を開いている時はどれも選択されない親切設計）
                 NavigationBar {
                     NavigationBarItem(selected = selectedTab == 0, onClick = { selectedTab = 0 }, label = { Text("支出") }, icon = { Text("💸") })
                     NavigationBarItem(selected = selectedTab == 1, onClick = { selectedTab = 1 }, label = { Text("収入") }, icon = { Text("💰") })
@@ -126,13 +138,13 @@ fun MainScreen() {
             }
         ) { innerPadding ->
             Box(modifier = Modifier.padding(innerPadding)) {
-                // 💡 ※ InputScreen 側はまだ修正前の古い状態なので一時的に赤文字になる可能性がありますが、
-                // 次のステップで InputScreen を完全固定選択＋ポップアップ追加仕様に大改造して一撃で解消します！
+                // 💡 selectedTab = 4 が叩かれたら、新しく作った SettingScreen をここに描画します！
                 when (selectedTab) {
                     0 -> InputScreen(isIncome = false, totalAsset = totalAsset, thisMonthExpense = thisMonthExpense, viewModel = viewModel)
                     1 -> InputScreen(isIncome = true, totalAsset = totalAsset, thisMonthExpense = thisMonthExpense, viewModel = viewModel)
-                    2 -> HistoryScreen(kakeiboList = kakeiboList,viewModel = viewModel)
+                    2 -> HistoryScreen(kakeiboList = kakeiboList, viewModel = viewModel)
                     3 -> CategoryManagementScreen(viewModel = viewModel)
+                    4 -> SettingScreen(viewModel = viewModel) // 💡 ここを追加！
                 }
             }
         }
