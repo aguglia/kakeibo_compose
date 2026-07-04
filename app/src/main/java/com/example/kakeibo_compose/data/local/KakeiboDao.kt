@@ -36,11 +36,28 @@ interface KakeiboDao {
         SELECT m.* FROM middle_category_table m
         LEFT JOIN sub_category_table s ON s.middle_category_id = m.id
         LEFT JOIN kakeibo_table k ON k.sub_category_id = s.id
-        WHERE m.is_income = :isIncome
+        WHERE m.is_income = :isIncome AND m.is_system = 0
         GROUP BY m.id
         ORDER BY COUNT(k.id) DESC, m.id ASC
     """)
     fun getMiddleCategories(isIncome: Boolean): Flow<List<MiddleCategoryEntity>>
+
+    // 💡 3. 【新規追加】総資産の計算用：システムデータ（初期資産）も含めて「全部」持ってくるクエリ
+    @Query("SELECT * FROM kakeibo_table")
+    fun getAllRawKakeiboItems(): Flow<List<KakeiboEntity>>
+
+    // 💡 総資産計算用（エイリアスをKakeiboDisplayItemの定義に完全一致！）
+    @Query("""
+        SELECT k.id, k.date, k.amount, k.memo, m.is_income, 
+               k.sub_category_id AS sub_category_id,
+               m.name AS middle_category_name, 
+               s.name AS sub_category_name 
+        FROM kakeibo_table k
+        INNER JOIN sub_category_table s ON k.sub_category_id = s.id
+        INNER JOIN middle_category_table m ON s.middle_category_id = m.id
+        ORDER BY k.date DESC, k.id DESC
+    """)
+    fun getAllRawDisplayItems(): Flow<List<KakeiboDisplayItem>>
 
     // 💡 【修正】自分以外のIDで、同じ名前の中カテゴリ（支出/収入別）があるか数える
     @Query("""
@@ -56,19 +73,16 @@ interface KakeiboDao {
     """)
     suspend fun getSubCategoryCount(middleCategoryId: Int, name: String, excludeId: Int): Int
 
+    // 💡 履歴表示用（エイリアスをKakeiboDisplayItemの定義に完全一致！）
     @Query("""
-        SELECT 
-            k.id AS id,
-            k.date AS date,
-            k.amount AS amount,
-            k.memo AS memo,
-            k.sub_category_id AS sub_category_id,
-            s.name AS sub_category_name,
-            m.name AS middle_category_name,
-            m.is_income AS is_income
+        SELECT k.id, k.date, k.amount, k.memo, m.is_income, 
+               k.sub_category_id AS sub_category_id,
+               m.name AS middle_category_name, 
+               s.name AS sub_category_name 
         FROM kakeibo_table k
         INNER JOIN sub_category_table s ON k.sub_category_id = s.id
         INNER JOIN middle_category_table m ON s.middle_category_id = m.id
+        WHERE k.is_system = 0 
         ORDER BY k.date DESC, k.id DESC
     """)
     fun getAllDisplayItems(): Flow<List<KakeiboDisplayItem>>
@@ -155,4 +169,19 @@ interface KakeiboDao {
     // 💡 小カテゴリ自体の削除
     @Query("DELETE FROM sub_category_table WHERE id = :id")
     suspend fun deleteSubCategoryById(id: Int)
+
+    // 今月の特定の中カテゴリの支出合計を取得する（日付が "2026-07-04" のような形式の場合の例）
+// ※お使いの日付フォーマット（YYYY-MMなど）に合わせて LIKE の指定は調整してください
+    @Query("""
+        SELECT SUM(k.amount) 
+        FROM kakeibo_table k
+        INNER JOIN sub_category_table s ON k.sub_category_id = s.id
+        WHERE s.middle_category_id = :middleCategoryId 
+          AND k.date LIKE :monthQuery || '%'
+    """)
+    fun getMiddleCategoryExpenseSum(middleCategoryId: Int, monthQuery: String): Flow<Int?>
+
+    // 指定した中カテゴリの予算額を取得する
+    @Query("SELECT amount FROM budget_table WHERE middle_category_id = :middleCategoryId")
+    fun getBudgetAmount(middleCategoryId: Int): Flow<Int?>
 }

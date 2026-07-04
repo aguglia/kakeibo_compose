@@ -24,5 +24,6 @@ data class KakeiboEntity(
     val date: String,
     @ColumnInfo(name = "sub_category_id") val subCategoryId: Int,
     val amount: Int,
-    val memo: String
+    val memo: String,
+    @ColumnInfo(name = "is_system", defaultValue = "0") val isSystem: Boolean = false
 )
