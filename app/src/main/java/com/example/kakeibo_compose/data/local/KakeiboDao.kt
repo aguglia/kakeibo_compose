@@ -2,12 +2,15 @@ package com.example.kakeibo_compose.data.local
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.example.kakeibo_compose.data.entity.BudgetEntity
+import com.example.kakeibo_compose.data.entity.CategorySelectionItem
 import com.example.kakeibo_compose.data.entity.MiddleCategoryEntity
 import com.example.kakeibo_compose.data.entity.SubCategoryEntity
 import com.example.kakeibo_compose.data.entity.KakeiboEntity
 import com.example.kakeibo_compose.data.entity.KakeiboDisplayItem
+import com.example.kakeibo_compose.data.entity.MiddleCategoryWithBudget
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -21,6 +24,12 @@ interface KakeiboDao {
 
     @Insert
     suspend fun insertSubCategory(subCat: SubCategoryEntity)
+
+    @Query("DELETE FROM kakeibo_table WHERE id = :id")
+    suspend fun deleteKakeiboById(id: Int)
+
+    @Query("UPDATE kakeibo_table SET amount = :amount, memo = :memo, sub_category_id = :subCategoryId WHERE id = :id")
+    suspend fun updateKakeiboFull(id: Int, amount: Int, memo: String, subCategoryId: Int)
 
     // 💡 【修正後】中カテゴリの一覧を、実際の取引（小カテゴリ経由）で「よく使う順（件数順）」で取得するSQL
     @Query("""
@@ -53,6 +62,7 @@ interface KakeiboDao {
             k.date AS date,
             k.amount AS amount,
             k.memo AS memo,
+            k.sub_category_id AS sub_category_id,
             s.name AS sub_category_name,
             m.name AS middle_category_name,
             m.is_income AS is_income
@@ -96,4 +106,53 @@ interface KakeiboDao {
     // 💡 全ての中カテゴリの固定予算マスターをそのまま全件取得する
     @Query("SELECT * FROM budget_table")
     fun getAllBudgets(): Flow<List<BudgetEntity>>
+
+    // 💡 収支(isIncome)に合わせて、中カテゴリと小カテゴリを結合し、使用回数（COUNT）が多い順に並び替えるSQL
+    @Query("""
+        SELECT 
+            s.id AS subId, 
+            s.name AS subName, 
+            m.id AS middleId, 
+            m.name AS middleName 
+        FROM sub_category_table s
+        INNER JOIN middle_category_table m ON s.middle_category_id = m.id
+        LEFT JOIN kakeibo_table k ON s.id = k.sub_category_id
+        WHERE m.is_Income = :isIncome
+        GROUP BY s.id
+        ORDER BY COUNT(k.id) DESC, s.id ASC
+    """)
+    fun getCategoriesSortedByUsage(isIncome: Boolean): Flow<List<CategorySelectionItem>>
+
+    // 💡 予算情報をLEFT JOINで一緒に引っ張ってくるクエリ
+    @Query("""
+    SELECT m.id, m.name, m.is_income AS isIncome, b.amount AS budgetAmount 
+    FROM middle_category_table m
+    LEFT JOIN budget_table b ON m.id = b.middle_category_id
+    WHERE m.is_income = :isIncome
+""")
+    fun getMiddleCategoriesWithBudget(isIncome: Boolean): Flow<List<MiddleCategoryWithBudget>>
+
+    // 💡 削除可否チェック用：小カテゴリに紐づく家計簿データの件数を数える
+    @Query("SELECT COUNT(*) FROM kakeibo_table WHERE sub_category_id = :subId")
+    suspend fun getKakeiboCountBySubCategory(subId: Int): Int
+
+    // 💡 削除可否チェック用：中カテゴリに紐づく小カテゴリの件数を数える
+    @Query("SELECT COUNT(*) FROM sub_category_table WHERE middle_category_id = :middleId")
+    suspend fun getSubCategoryCountByMiddle(middleId: Int): Int
+
+    // 💡 予算の削除（中カテゴリ編集で予算を空にした時用）
+    @Query("DELETE FROM budget_table WHERE middle_category_id = :middleId")
+    suspend fun deleteBudgetByMiddle(middleId: Int)
+
+    // 💡 予算の保存（新規追加・更新用：お持ちのInsert(onConflict)メソッドをそのまま使ってもOKです）
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBudget(budget: BudgetEntity)
+
+    // 💡 中カテゴリ自体の削除
+    @Query("DELETE FROM middle_category_table WHERE id = :id")
+    suspend fun deleteMiddleCategoryById(id: Int)
+
+    // 💡 小カテゴリ自体の削除
+    @Query("DELETE FROM sub_category_table WHERE id = :id")
+    suspend fun deleteSubCategoryById(id: Int)
 }

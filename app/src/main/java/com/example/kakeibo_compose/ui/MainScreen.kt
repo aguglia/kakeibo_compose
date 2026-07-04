@@ -91,9 +91,9 @@ fun MainScreen() {
                 // 💡 ※ InputScreen 側はまだ修正前の古い状態なので一時的に赤文字になる可能性がありますが、
                 // 次のステップで InputScreen を完全固定選択＋ポップアップ追加仕様に大改造して一撃で解消します！
                 when (selectedTab) {
-                    0 -> InputScreen(isIncome = false, totalAsset = totalAsset, thisMonthExpense = thisMonthExpense, commonCategories = expenseCategories, viewModel = viewModel)
-                    1 -> InputScreen(isIncome = true, totalAsset = totalAsset, thisMonthExpense = thisMonthExpense, commonCategories = incomeCategories, viewModel = viewModel)
-                    2 -> HistoryScreen(kakeiboList = kakeiboList)
+                    0 -> InputScreen(isIncome = false, totalAsset = totalAsset, thisMonthExpense = thisMonthExpense, viewModel = viewModel)
+                    1 -> InputScreen(isIncome = true, totalAsset = totalAsset, thisMonthExpense = thisMonthExpense, viewModel = viewModel)
+                    2 -> HistoryScreen(kakeiboList = kakeiboList,viewModel = viewModel)
                     3 -> CategoryManagementScreen(viewModel = viewModel)
                 }
             }

@@ -1,7 +1,6 @@
 package com.example.kakeibo_compose.ui
 
 import android.widget.Toast
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -13,8 +12,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.example.kakeibo_compose.data.entity.CategorySelectionItem
 import com.example.kakeibo_compose.data.entity.MiddleCategoryEntity
-import com.example.kakeibo_compose.data.entity.SubCategoryEntity
 import com.example.kakeibo_compose.viewmodel.KakeiboViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -23,7 +22,6 @@ fun InputScreen(
     isIncome: Boolean,
     totalAsset: Int,
     thisMonthExpense: Int,
-    commonCategories: List<SubCategoryEntity>, // MainScreenからの引数（型エラー解消用）
     viewModel: KakeiboViewModel
 ) {
     val context = LocalContext.current
@@ -32,32 +30,21 @@ fun InputScreen(
     var amountText by remember { mutableStateOf("") }
     var memoText by remember { mutableStateOf("") }
 
-    // 選択されたカテゴリの状態
-    var selectedMiddleCategory by remember { mutableStateOf<MiddleCategoryEntity?>(null) }
-    var selectedSubCategory by remember { mutableStateOf<SubCategoryEntity?>(null) }
+    // 選択された「中 > 小」カテゴリの状態
+    var selectedCategory by remember { mutableStateOf<CategorySelectionItem?>(null) }
 
-    // DBからリアルタイムにその収支タイプの中カテゴリ一覧を取得
+    // DBからリストを取得
+    val categoryList by viewModel.getCategorySelectionList(isIncome).collectAsState(initial = emptyList())
+    // 💡 ダイアログで「既存の中カテゴリ」を選ぶために、中カテゴリの一覧も取得しておく
     val middleCategories by viewModel.getMiddleCategories(isIncome).collectAsState(initial = emptyList())
 
-    // 現在選択中の中カテゴリに紐づく小カテゴリ一覧をフィルタリングして取得
-    // ※今回はシンプルに全小カテゴリ（よく使う順）から、選択中の中カテゴリIDが一致するものに絞り込みます
-    val filteredSubCategories = remember(selectedMiddleCategory, commonCategories) {
-        if (selectedMiddleCategory == null) emptyList()
-        else commonCategories.filter { it.middleCategoryId == selectedMiddleCategory!!.id }
-    }
+    // UIの開閉状態
+    var expanded by remember { mutableStateOf(false) }
+    var showAddSubDialog by remember { mutableStateOf(false) } // 💡 小カテゴリ追加ダイアログの表示状態
 
-    // ドロップダウンの開閉状態
-    var middleDropdownExpanded by remember { mutableStateOf(false) }
-    var subDropdownExpanded by remember { mutableStateOf(false) }
-
-    // ポップアップ（ダイアログ）の開閉状態
-    var showAddMiddleDialog by remember { mutableStateOf(false) }
-    var showAddSubDialog by remember { mutableStateOf(false) }
-
-    // タブ（支出/収入）が切り替わったら選択をリセット
+    // タブが切り替わったら選択をリセット
     LaunchedEffect(isIncome) {
-        selectedMiddleCategory = null
-        selectedSubCategory = null
+        selectedCategory = null
     }
 
     Column(
@@ -84,110 +71,59 @@ fun InputScreen(
         )
 
         // ----------------------------------------------------
-        // 📁 1. 中カテゴリ選択 ＋ 追加ボタン
+        // 📁 統合されたカテゴリ選択 ＋ 小カテゴリ追加ボタン
         // ----------------------------------------------------
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Box(modifier = Modifier.weight(1f)) {
-                OutlinedTextField(
-                    value = selectedMiddleCategory?.name ?: "選択してください",
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("中カテゴリ（必須）") },
-                    modifier = Modifier.fillMaxWidth().clickable { middleDropdownExpanded = true },
-                    enabled = false, // クリックイベントをBox側で拾うため
-                    colors = OutlinedTextFieldDefaults.colors(
-                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        disabledBorderColor = MaterialTheme.colorScheme.outline
-                    )
-                )
-                // 本物のクリック領域
-                Box(modifier = Modifier.matchParentSize().clickable { middleDropdownExpanded = true })
-
-                DropdownMenu(
-                    expanded = middleDropdownExpanded,
-                    onDismissRequest = { middleDropdownExpanded = false }
-                ) {
-                    middleCategories.forEach { category ->
-                        DropdownMenuItem(
-                            text = { Text(category.name) },
-                            onClick = {
-                                selectedMiddleCategory = category
-                                selectedSubCategory = null // 中が変わったら小はリセット
-                                middleDropdownExpanded = false
-                            }
-                        )
-                    }
-                }
-            }
-
-            // ➕ 中カテゴリ追加ボタン
-            Button(
-                onClick = { showAddMiddleDialog = true },
-                contentPadding = PaddingValues(0.dp),
-                modifier = Modifier.size(56.dp)
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = !expanded },
+                modifier = Modifier.weight(1f)
             ) {
-                Text("＋", style = MaterialTheme.typography.titleLarge)
-            }
-        }
-
-        // ----------------------------------------------------
-        // 🏷️ 2. 小カテゴリ選択 ＋ 追加ボタン
-        // ----------------------------------------------------
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Box(modifier = Modifier.weight(1f)) {
                 OutlinedTextField(
-                    value = selectedSubCategory?.name ?: "選択してください",
+                    value = selectedCategory?.displayName ?: "カテゴリを選択してください",
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("小カテゴリ（必須）") },
-                    modifier = Modifier.fillMaxWidth().clickable {
-                        if (selectedMiddleCategory != null) subDropdownExpanded = true
-                    },
-                    enabled = false,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        disabledTextColor = if (selectedMiddleCategory != null) MaterialTheme.colorScheme.onSurface else Color.Gray,
-                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        disabledBorderColor = MaterialTheme.colorScheme.outline
-                    )
+                    label = { Text("カテゴリ（必須）") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                    // 前回の警告対応済みのコード
+                    modifier = Modifier
+                        .menuAnchor(type = ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                        .fillMaxWidth()
                 )
-                Box(modifier = Modifier.matchParentSize().clickable {
-                    if (selectedMiddleCategory == null) {
-                        Toast.makeText(context, "先に中カテゴリを選択してください", Toast.LENGTH_SHORT).show()
-                    } else {
-                        subDropdownExpanded = true
-                    }
-                })
 
-                DropdownMenu(
-                    expanded = subDropdownExpanded,
-                    onDismissRequest = { subDropdownExpanded = false }
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
                 ) {
-                    filteredSubCategories.forEach { subCategory ->
+                    categoryList.forEach { item ->
                         DropdownMenuItem(
-                            text = { Text(subCategory.name) },
+                            text = { Text(item.displayName) },
                             onClick = {
-                                selectedSubCategory = subCategory
-                                subDropdownExpanded = false
+                                selectedCategory = item
+                                expanded = false
                             }
+                        )
+                    }
+                    if (categoryList.isEmpty()) {
+                        DropdownMenuItem(
+                            text = { Text("カテゴリがありません") },
+                            onClick = { expanded = false },
+                            enabled = false
                         )
                     }
                 }
             }
 
-            // ➕ 小カテゴリ追加ボタン
+            // ➕ 小カテゴリ追加ボタン（復活！）
             Button(
                 onClick = {
-                    if (selectedMiddleCategory == null) {
-                        Toast.makeText(context, "先に中カテゴリを選択してください", Toast.LENGTH_SHORT).show()
+                    if (middleCategories.isEmpty()) {
+                        Toast.makeText(context, "先に設定画面から中カテゴリを作成してください", Toast.LENGTH_SHORT).show()
                     } else {
                         showAddSubDialog = true
                     }
@@ -224,7 +160,7 @@ fun InputScreen(
         Button(
             onClick = {
                 val amount = amountText.toIntOrNull()
-                if (selectedSubCategory == null) {
+                if (selectedCategory == null) {
                     Toast.makeText(context, "カテゴリを必ず選択してください", Toast.LENGTH_SHORT).show()
                     return@Button
                 }
@@ -233,9 +169,9 @@ fun InputScreen(
                     return@Button
                 }
 
-                // IDを渡して保存！
+                // 保存実行
                 viewModel.saveItem(
-                    subCategoryId = selectedSubCategory!!.id,
+                    subCategoryId = selectedCategory!!.subId,
                     amount = amount,
                     memo = memoText
                 )
@@ -243,8 +179,7 @@ fun InputScreen(
                 // フォームリセット
                 amountText = ""
                 memoText = ""
-                selectedMiddleCategory = null
-                selectedSubCategory = null
+                selectedCategory = null
                 Toast.makeText(context, "登録しました！", Toast.LENGTH_SHORT).show()
             },
             modifier = Modifier.fillMaxWidth().height(56.dp)
@@ -254,58 +189,82 @@ fun InputScreen(
     }
 
     // ====================================================
-    // 🏢 ポップアップ：中カテゴリ追加ダイアログ
-    // ====================================================
-    if (showAddMiddleDialog) {
-        var newMiddleName by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { showAddMiddleDialog = false },
-            title = { Text("中カテゴリの新規追加") },
-            text = {
-                OutlinedTextField(
-                    value = newMiddleName,
-                    onValueChange = { newMiddleName = it },
-                    label = { Text("中カテゴリ名") },
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.addMiddleCategory(newMiddleName, isIncome) { success, message ->
-                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                        if (success) showAddMiddleDialog = false
-                    }
-                }) { Text("追加") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddMiddleDialog = false }) { Text("キャンセル") }
-            }
-        )
-    }
-
-    // ====================================================
     // 🏷️ ポップアップ：小カテゴリ追加ダイアログ
     // ====================================================
-    if (showAddSubDialog && selectedMiddleCategory != null) {
+    if (showAddSubDialog) {
         var newSubName by remember { mutableStateOf("") }
+        var dialogDropdownExpanded by remember { mutableStateOf(false) }
+
+        // 💡 ユーザーが既にカテゴリを選んでいた場合、その「中カテゴリ」を初期選択状態にしてあげる親切設計
+        var dialogSelectedMiddle by remember {
+            mutableStateOf(middleCategories.find { it.id == selectedCategory?.middleId })
+        }
+
         AlertDialog(
             onDismissRequest = { showAddSubDialog = false },
-            title = { Text("「${selectedMiddleCategory!!.name}」に小カテゴリを追加") },
+            title = { Text("小カテゴリの新規追加") },
             text = {
-                OutlinedTextField(
-                    value = newSubName,
-                    onValueChange = { newSubName = it },
-                    label = { Text("小カテゴリ名") },
-                    singleLine = true
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    // ダイアログ内の「中カテゴリ選択」
+                    ExposedDropdownMenuBox(
+                        expanded = dialogDropdownExpanded,
+                        onExpandedChange = { dialogDropdownExpanded = !dialogDropdownExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = dialogSelectedMiddle?.name ?: "中カテゴリを選択",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("所属する中カテゴリ") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dialogDropdownExpanded) },
+                            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                            modifier = Modifier
+                                .menuAnchor(type = ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                                .fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = dialogDropdownExpanded,
+                            onDismissRequest = { dialogDropdownExpanded = false }
+                        ) {
+                            middleCategories.forEach { category ->
+                                DropdownMenuItem(
+                                    text = { Text(category.name) },
+                                    onClick = {
+                                        dialogSelectedMiddle = category
+                                        dialogDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // 新しい小カテゴリ名の入力
+                    OutlinedTextField(
+                        value = newSubName,
+                        onValueChange = { newSubName = it },
+                        label = { Text("新しい小カテゴリ名") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    viewModel.addSubCategory(selectedMiddleCategory!!.id, newSubName) { success, message ->
-                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                        if (success) showAddSubDialog = false
+                TextButton(
+                    onClick = {
+                        if (dialogSelectedMiddle == null) {
+                            Toast.makeText(context, "中カテゴリを選択してください", Toast.LENGTH_SHORT).show()
+                            return@TextButton
+                        }
+                        if (newSubName.isBlank()) {
+                            Toast.makeText(context, "小カテゴリ名を入力してください", Toast.LENGTH_SHORT).show()
+                            return@TextButton
+                        }
+                        // 小カテゴリを追加する（ViewModel側の関数）
+                        viewModel.addSubCategory(dialogSelectedMiddle!!.id, newSubName) { success, message ->
+                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                            if (success) showAddSubDialog = false
+                        }
                     }
-                }) { Text("追加") }
+                ) { Text("追加") }
             },
             dismissButton = {
                 TextButton(onClick = { showAddSubDialog = false }) { Text("キャンセル") }

@@ -1,7 +1,9 @@
 package com.example.kakeibo_compose.data.repository
 
 import com.example.kakeibo_compose.data.entity.BudgetEntity
+import com.example.kakeibo_compose.data.entity.CategorySelectionItem
 import com.example.kakeibo_compose.data.entity.MiddleCategoryEntity
+import com.example.kakeibo_compose.data.entity.MiddleCategoryWithBudget
 import com.example.kakeibo_compose.data.entity.SubCategoryEntity
 import com.example.kakeibo_compose.data.entity.KakeiboEntity
 import com.example.kakeibo_compose.data.entity.KakeiboDisplayItem
@@ -10,11 +12,22 @@ import kotlinx.coroutines.flow.Flow
 
 class KakeiboRepository(private val kakeiboDao: KakeiboDao) {
 
+    // ==========================================
+    // ユーザー様の既存のコード（完全保持）
+    // ==========================================
     val allDisplayItems: Flow<List<KakeiboDisplayItem>> = kakeiboDao.getAllDisplayItems()
     val commonExpenseSubCategories: Flow<List<SubCategoryEntity>> = kakeiboDao.getCommonSubCategories(isIncome = false)
     val commonIncomeSubCategories: Flow<List<SubCategoryEntity>> = kakeiboDao.getCommonSubCategories(isIncome = true)
 
     fun getMiddleCategories(isIncome: Boolean): Flow<List<MiddleCategoryEntity>> = kakeiboDao.getMiddleCategories(isIncome)
+
+    suspend fun deleteKakeiboById(id: Int) {
+        kakeiboDao.deleteKakeiboById(id)
+    }
+
+    suspend fun updateKakeiboFull(id: Int, amount: Int, memo: String, subCategoryId: Int) {
+        kakeiboDao.updateKakeiboFull(id, amount, memo, subCategoryId)
+    }
 
     suspend fun insertKakeibo(item: KakeiboEntity) {
         kakeiboDao.insertKakeibo(item)
@@ -33,16 +46,64 @@ class KakeiboRepository(private val kakeiboDao: KakeiboDao) {
         return kakeiboDao.getSubCategoryCount(middleCategoryId, name, excludeId) > 0
     }
 
-    fun getSubCategoriesByMiddle(middleCategoryId: Int): Flow<List<SubCategoryEntity>> = kakeiboDao.getSubCategoriesByMiddle(middleCategoryId)
-
-
-    suspend fun updateMiddleCategoryName(id: Int, newName: String) { kakeiboDao.updateMiddleCategoryName(id, newName) }
-    suspend fun updateSubCategoryName(id: Int, newName: String) { kakeiboDao.updateSubCategoryName(id, newName) }
-
     suspend fun isMiddleCategoryDuplicate(isIncome: Boolean, name: String, excludeId: Int): Boolean {
         return kakeiboDao.getMiddleCategoryCount(isIncome, name, excludeId) > 0
     }
 
+    fun getSubCategoriesByMiddle(middleCategoryId: Int): Flow<List<SubCategoryEntity>> = kakeiboDao.getSubCategoriesByMiddle(middleCategoryId)
+
+    suspend fun updateMiddleCategoryName(id: Int, newName: String) { kakeiboDao.updateMiddleCategoryName(id, newName) }
+    suspend fun updateSubCategoryName(id: Int, newName: String) { kakeiboDao.updateSubCategoryName(id, newName) }
+
+
+
+    fun getCategoriesSortedByUsage(isIncome: Boolean): Flow<List<CategorySelectionItem>> {
+        return kakeiboDao.getCategoriesSortedByUsage(isIncome)
+    }
+
     val allBudgets: Flow<List<BudgetEntity>> = kakeiboDao.getAllBudgets()
+
+    // 💡 既存のsaveBudget関数
     suspend fun saveBudget(budget: BudgetEntity) { kakeiboDao.insertOrUpdateBudget(budget) }
+
+
+    // ==========================================
+    // 🌟 今回の「ツリー管理＆安全削除」機能用
+    // ==========================================
+
+    // 予算を含んだ中カテゴリ一覧の取得
+    fun getMiddleCategoriesWithBudget(isIncome: Boolean): Flow<List<MiddleCategoryWithBudget>> {
+        return kakeiboDao.getMiddleCategoriesWithBudget(isIncome)
+    }
+
+    // 中カテゴリの削除
+    suspend fun deleteMiddleCategoryById(id: Int) {
+        kakeiboDao.deleteMiddleCategoryById(id)
+    }
+
+    // 削除前の安全チェック：この中カテゴリに紐づく小カテゴリがいくつあるか？
+    suspend fun getSubCategoryCountByMiddle(middleId: Int): Int {
+        return kakeiboDao.getSubCategoryCountByMiddle(middleId)
+    }
+
+    // 予算の削除（編集画面で予算を空欄にした時に使用）
+    suspend fun deleteBudgetByMiddle(middleId: Int) {
+        kakeiboDao.deleteBudgetByMiddle(middleId)
+    }
+
+    // 小カテゴリの削除
+    suspend fun deleteSubCategoryById(id: Int) {
+        kakeiboDao.deleteSubCategoryById(id)
+    }
+
+    // 削除前の安全チェック：この小カテゴリを使った家計簿履歴がいくつあるか？
+    suspend fun getKakeiboCountBySubCategory(subId: Int): Int {
+        return kakeiboDao.getKakeiboCountBySubCategory(subId)
+    }
+
+    // 💡 新規追加ロジック側から「insertBudget」という名前で呼ばれても、
+    // 既存の「insertOrUpdateBudget」へ綺麗に流れるように仲介します
+    suspend fun insertBudget(budget: BudgetEntity) {
+        kakeiboDao.insertOrUpdateBudget(budget)
+    }
 }

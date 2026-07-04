@@ -9,8 +9,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState // 💡 これが絶対に必要です！
-import androidx.compose.runtime.getValue        // 💡 これが by のエラーを消す特効薬です！
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -34,20 +34,33 @@ fun CategoryManagementScreen(viewModel: KakeiboViewModel) {
     val middleCategories by viewModel.getMiddleCategories(isIncomeTab).collectAsState(initial = emptyList())
     val budgetList by viewModel.allBudgets.collectAsState(initial = emptyList())
 
+    var showAddDialog by remember { mutableStateOf(false) }
     var editingMiddleCategory by remember { mutableStateOf<MiddleCategoryEntity?>(null) }
     var editingSubCategory by remember { mutableStateOf<Pair<SubCategoryEntity, Int>?>(null) }
-
     var expandedMiddleCategoryId by remember { mutableStateOf<Int?>(null) }
 
+    // 💡 削除確認ダイアログの表示を管理する状態
+    var showMiddleDeleteConfirm by remember { mutableStateOf<MiddleCategoryEntity?>(null) }
+    var showSubDeleteConfirm by remember { mutableStateOf<SubCategoryEntity?>(null) }
+
     Column(modifier = Modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = if (isIncomeTab) 1 else 0) {
+        PrimaryTabRow(selectedTabIndex = if (isIncomeTab) 1 else 0) {
             Tab(selected = !isIncomeTab, onClick = { isIncomeTab = false; expandedMiddleCategoryId = null }, text = { Text("💸 支出カテゴリ") })
             Tab(selected = isIncomeTab, onClick = { isIncomeTab = true; expandedMiddleCategoryId = null }, text = { Text("💰 収入カテゴリ") })
         }
 
+        Box(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            contentAlignment = Alignment.CenterEnd
+        ) {
+            Button(onClick = { showAddDialog = true }) {
+                Text(if (isIncomeTab) "＋ 収入カテゴリを追加" else "＋ 支出カテゴリを追加")
+            }
+        }
+
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(middleCategories, key = { it.id }) { middle ->
@@ -100,6 +113,41 @@ fun CategoryManagementScreen(viewModel: KakeiboViewModel) {
         }
     }
 
+    // 新規追加ダイアログ
+    if (showAddDialog) {
+        var newCategoryName by remember { mutableStateOf("") }
+        var newBudgetText by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showAddDialog = false },
+            title = { Text(if (isIncomeTab) "収入カテゴリの追加" else "支出カテゴリの追加") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(value = newCategoryName, onValueChange = { newCategoryName = it }, label = { Text("カテゴリ名") }, singleLine = true)
+                    if (!isIncomeTab) {
+                        OutlinedTextField(value = newBudgetText, onValueChange = { newBudgetText = it }, label = { Text("毎月の固定予算 (円)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
+                    }
+                }
+            },
+            confirmButton = {
+                val isInputValid = newCategoryName.isNotBlank() && (isIncomeTab || newBudgetText.toIntOrNull() != null)
+                TextButton(
+                    onClick = {
+                        viewModel.addMiddleCategoryWithBudget(newCategoryName, isIncomeTab, newBudgetText.toIntOrNull()) { success, msg ->
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            if (success) showAddDialog = false
+                        }
+                    },
+                    enabled = isInputValid
+                ) { Text("追加") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddDialog = false }) { Text("キャンセル") }
+            }
+        )
+    }
+
+    // 中カテゴリの編集ダイアログ
     if (editingMiddleCategory != null) {
         val middleEntity = editingMiddleCategory!!
         var inputName by remember { mutableStateOf(middleEntity.name) }
@@ -111,92 +159,164 @@ fun CategoryManagementScreen(viewModel: KakeiboViewModel) {
             title = { Text("中カテゴリの編集") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = inputName,
-                        onValueChange = { inputName = it },
-                        label = { Text("中カテゴリ名") },
-                        singleLine = true
-                    )
+                    OutlinedTextField(value = inputName, onValueChange = { inputName = it }, label = { Text("中カテゴリ名") }, singleLine = true)
                     if (!isIncomeTab) {
-                        OutlinedTextField(
-                            value = budgetText,
-                            onValueChange = { budgetText = it },
-                            label = { Text("毎月の固定予算 (円)") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true
-                        )
+                        OutlinedTextField(value = budgetText, onValueChange = { budgetText = it }, label = { Text("毎月の固定予算 (円)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    viewModel.updateMiddleCategoryName(middleEntity.id, isIncomeTab, inputName) { success, msg ->
-                        if (!success) {
+                val isInputValid = inputName.isNotBlank() && (isIncomeTab || budgetText.toIntOrNull() != null)
+                TextButton(
+                    onClick = {
+                        viewModel.updateMiddleCategoryWithBudget(middleEntity.id, inputName, isIncomeTab, budgetText.toIntOrNull()) { success, msg ->
                             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                        } else {
-                            if (!isIncomeTab) {
-                                val amount = budgetText.toIntOrNull()
-                                if (amount != null && amount >= 0) {
-                                    viewModel.saveBudget(middleEntity.id, amount)
-                                }
-                            }
-                            Toast.makeText(context, "変更を保存しました", Toast.LENGTH_SHORT).show()
-                            editingMiddleCategory = null
+                            if (success) editingMiddleCategory = null
                         }
-                    }
-                }) { Text("保存") }
+                    },
+                    enabled = isInputValid
+                ) { Text("保存") }
             },
             dismissButton = {
-                TextButton(onClick = { editingMiddleCategory = null }) { Text("キャンセル") }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    TextButton(
+                        onClick = {
+                            // 💡 すぐ削除せず、まず確認ダイアログ用のフラグを立てる
+                            showMiddleDeleteConfirm = middleEntity
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("削除")
+                    }
+
+                    TextButton(onClick = { editingMiddleCategory = null }) {
+                        Text("キャンセル")
+                    }
+                }
             }
         )
     }
 
+    // 小カテゴリの編集ダイアログ
     editingSubCategory?.let { (subEntity, parentMiddleId) ->
         var inputSubName by remember(subEntity.id) { mutableStateOf(subEntity.name) }
 
         AlertDialog(
             onDismissRequest = { editingSubCategory = null },
-            title = { Text("小カテゴリ名の変更") },
+            title = { Text("小カテゴリの編集") },
             text = {
-                OutlinedTextField(
-                    value = inputSubName,
-                    onValueChange = { inputSubName = it },
-                    label = { Text("小カテゴリ名") },
-                    singleLine = true
-                )
+                OutlinedTextField(value = inputSubName, onValueChange = { inputSubName = it }, label = { Text("小カテゴリ名") }, singleLine = true)
             },
             confirmButton = {
-                TextButton(onClick = {
-                    viewModel.updateSubCategoryName(subEntity.id, parentMiddleId, inputSubName) { success, msg ->
-                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                        if (success) editingSubCategory = null
-                    }
-                }) { Text("変更") }
+                TextButton(
+                    onClick = {
+                        viewModel.updateSubCategoryName(subEntity.id, parentMiddleId, inputSubName) { success, msg ->
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            if (success) editingSubCategory = null
+                        }
+                    },
+                    enabled = inputSubName.isNotBlank()
+                ) { Text("変更") }
             },
             dismissButton = {
-                TextButton(onClick = { editingSubCategory = null }) { Text("キャンセル") }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    TextButton(
+                        onClick = {
+                            // 💡 すぐ削除せず、まず確認ダイアログ用のフラグを立てる
+                            showSubDeleteConfirm = subEntity
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("削除")
+                    }
+
+                    TextButton(onClick = { editingSubCategory = null }) {
+                        Text("キャンセル")
+                    }
+                }
+            }
+        )
+    }
+
+    // 🔴 3. 【新設】中カテゴリの削除確認クッションダイアログ
+    showMiddleDeleteConfirm?.let { middleEntity ->
+        AlertDialog(
+            onDismissRequest = { showMiddleDeleteConfirm = null },
+            title = { Text("カテゴリの削除") },
+            text = { Text("「${middleEntity.name}」を完全に削除しますか？\n（※小カテゴリが残っている場合は削除できません）") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        // 確定した時だけ本番の削除処理を走らせる
+                        viewModel.deleteMiddleCategorySafety(middleEntity.id) { success, msg ->
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            if (success) {
+                                showMiddleDeleteConfirm = null
+                                editingMiddleCategory = null // 元の編集画面も一緒に閉じる
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("削除する")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMiddleDeleteConfirm = null }) {
+                    Text("キャンセル")
+                }
+            }
+        )
+    }
+
+    // 🔴 4. 【新設】小カテゴリの削除確認クッションダイアログ
+    showSubDeleteConfirm?.let { subEntity ->
+        AlertDialog(
+            onDismissRequest = { showSubDeleteConfirm = null },
+            title = { Text("小カテゴリの削除") },
+            text = { Text("「${subEntity.name}」を完全に削除しますか？\n（※このカテゴリを使用した会計履歴がある場合は削除できません）") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        // 確定した時だけ本番の削除処理を走らせる
+                        viewModel.deleteSubCategorySafety(subEntity.id) { success, msg ->
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            if (success) {
+                                showSubDeleteConfirm = null
+                                editingSubCategory = null // 元の編集画面も一緒に閉じる
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("削除する")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSubDeleteConfirm = null }) {
+                    Text("キャンセル")
+                }
             }
         )
     }
 }
 
-// ====================================================
-// 小カテゴリ表示専用のコンポーザブル部品（完全に外側に独立）
-// ====================================================
 @Composable
 fun SubCategoryListSection(
     middleId: Int,
     viewModel: KakeiboViewModel,
     onSubClick: (SubCategoryEntity, Int) -> Unit
 ) {
-    // 💡 上部で明示的にインポートしたため、ここで確実に by と collectAsState が型を解決できるようになります！
     val subCategories by viewModel.getSubCategoriesByMiddle(middleId).collectAsState(initial = emptyList())
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 24.dp, end = 16.dp, bottom = 16.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         HorizontalDivider(modifier = Modifier.padding(bottom = 8.dp))
@@ -213,7 +333,7 @@ fun SubCategoryListSection(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(text = "• ${sub.name}", style = MaterialTheme.typography.bodyLarge)
-                    Text("📝 変更", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                    Text("📝 編集・削除", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                 }
             }
         }
