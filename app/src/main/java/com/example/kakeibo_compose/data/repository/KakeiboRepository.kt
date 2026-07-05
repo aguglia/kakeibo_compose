@@ -7,7 +7,9 @@ import com.example.kakeibo_compose.data.entity.MiddleCategoryWithBudget
 import com.example.kakeibo_compose.data.entity.SubCategoryEntity
 import com.example.kakeibo_compose.data.entity.KakeiboEntity
 import com.example.kakeibo_compose.data.entity.KakeiboDisplayItem
+import com.example.kakeibo_compose.data.entity.TargetEntity
 import com.example.kakeibo_compose.data.local.KakeiboDao
+import com.example.kakeibo_compose.data.local.KakeiboMonthSummary
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -120,4 +122,12 @@ class KakeiboRepository(private val kakeiboDao: KakeiboDao) {
     val allRawKakeiboItems: Flow<List<KakeiboEntity>> = kakeiboDao.getAllRawKakeiboItems()
 
     val allRawDisplayItems: Flow<List<KakeiboDisplayItem>> = kakeiboDao.getAllRawDisplayItems()
+
+    // 🎯 目標関連のデータ中継
+    val allTargets: Flow<List<TargetEntity>> = kakeiboDao.getAllTargets()
+    val monthlyAnalysisData: Flow<List<KakeiboMonthSummary>> = kakeiboDao.getMonthlyAnalysisData()
+
+    suspend fun insertTarget(target: TargetEntity) = kakeiboDao.insertTarget(target)
+    suspend fun updateTarget(target: TargetEntity) = kakeiboDao.updateTarget(target)
+    suspend fun deleteTarget(targetId: Int) = kakeiboDao.deleteTarget(targetId)
 }

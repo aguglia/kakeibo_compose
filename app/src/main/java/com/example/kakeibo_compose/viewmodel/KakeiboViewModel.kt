@@ -10,6 +10,7 @@ import com.example.kakeibo_compose.data.entity.MiddleCategoryEntity
 import com.example.kakeibo_compose.data.entity.SubCategoryEntity
 import com.example.kakeibo_compose.data.entity.KakeiboEntity
 import com.example.kakeibo_compose.data.entity.MiddleCategoryWithBudget
+import com.example.kakeibo_compose.data.entity.TargetEntity
 import com.example.kakeibo_compose.data.local.KakeiboDatabase
 import com.example.kakeibo_compose.data.local.SettingPreferences
 import com.example.kakeibo_compose.data.repository.KakeiboRepository
@@ -335,4 +336,118 @@ class KakeiboViewModel(application: Application) : AndroidViewModel(application)
             settingPreferences.saveMinimumAsset(amount)
         }
     }
+
+    // ====================================================
+    // 🎯 目標設定 ＆ 分析アドバイスロジック
+    // ====================================================
+
+    // 全ての目標を取得するFlow
+    val allTargets = repository.allTargets
+
+    // 目標の登録
+    fun addTarget(title: String, amount: Int, deadline: String) {
+        viewModelScope.launch {
+            repository.insertTarget(TargetEntity(title = title, targetAmount = amount, deadlineDate = deadline))
+        }
+    }
+
+    // 目標の更新（達成フラグの切り替えなど）
+    fun updateTarget(target: TargetEntity) {
+        viewModelScope.launch {
+            repository.updateTarget(target)
+        }
+    }
+
+    // 目標の削除
+    fun deleteTarget(targetId: Int) {
+        viewModelScope.launch {
+            repository.deleteTarget(targetId)
+        }
+    }
+
+    /**
+     * 📊 【最終防衛ライン上乗せ版】設定された最低維持資産を目標金額にプラスしてシミュレーションする
+     * @param includeMinAsset 設定された最低維持資産（防衛ライン）を考慮に入れるかどうか
+     */
+    fun getTargetAnalysis(target: TargetEntity, includeMinAsset: Boolean): Flow<TargetAnalysisResult> {
+        // 💡 過去の収支データ、総資産、そしてDataStoreにある「最低維持資産（minimumAsset）」を結合！
+        return combine(repository.monthlyAnalysisData, totalAsset, minimumAsset) { monthlyData, currentAsset, minAssetSetting ->
+
+            // 1. 過去の実績から純粋な月平均の貯金額を計算（初期資産は除外済み）
+            val validMonths = monthlyData.filter { it.totalIncome > 0 || it.totalExpense > 0 }
+            val averageMonthlySaving = if (validMonths.isNotEmpty()) {
+                val totalIncomeSum = validMonths.sumOf { it.totalIncome }
+                val totalExpenseSum = validMonths.sumOf { it.totalExpense }
+                (totalIncomeSum - totalExpenseSum) / validMonths.size
+            } else {
+                0
+            }
+
+            // 2. 残り月数の計算
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+            val deadlineItem = try { sdf.parse(target.deadlineDate) } catch (e: Exception) { null }
+            val today = java.util.Date()
+
+            val monthsLeft = if (deadlineItem != null && deadlineItem.after(today)) {
+                val diffMs = deadlineItem.time - today.time
+                val days = diffMs / (1000 * 60 * 60 * 24)
+                (days / 30.43).coerceAtLeast(0.1)
+            } else {
+                0.1
+            }
+
+            // 3. 💡 防衛ラインを考慮する場合、目標金額に「最低維持資産」をドカンとプラスする！
+            val baseTargetAmount = target.targetAmount
+            val finalTargetAmount = if (includeMinAsset) {
+                baseTargetAmount + minAssetSetting
+            } else {
+                baseTargetAmount
+            }
+
+            // 4. あと必要な金額（防衛ライン上乗せ後の目標額ベース）
+            val amountNeeded = (finalTargetAmount - currentAsset).coerceAtLeast(0)
+
+            // 5. 今のペースで間に合うかどうかの判定
+            val estimatedFutureAsset = currentAsset + (averageMonthlySaving * monthsLeft).toInt()
+            val isOnTrack = estimatedFutureAsset >= finalTargetAmount
+
+            // 6. 必要な月間貯金額
+            val requiredMonthlySaving = (amountNeeded / monthsLeft).toInt()
+
+            // 7. メッセージの自動生成
+            val prefix = if (includeMinAsset) "【防衛ライン考慮】" else "【目標額のみ】"
+            val adviceMessage = when {
+                target.isCompleted -> "🎉 この目標は既に達成されています！素晴らしい！"
+                currentAsset >= finalTargetAmount -> if (includeMinAsset) {
+                    "✨ 資産防衛ライン（¥$minAssetSetting）をガッチリ守った上で、既に目標を突破しています！完璧な状態です！"
+                } else {
+                    "✨ 既に目標金額を突破しています！今すぐ達成ボタンを押せます！"
+                }
+                averageMonthlySaving <= 0 -> "🚨 $prefix 現在の月間収支が赤字、またはプラマイゼロです。このままだと絶対に間に合いません！"
+                isOnTrack -> "✅ $prefix 順調です！今の貯金ペース（月平均 +$averageMonthlySaving 円）を維持できれば、期限までに安全に達成可能です。"
+                else -> {
+                    val deficit = requiredMonthlySaving - averageMonthlySaving
+                    "⚠️ $prefix 【警告】このペースだと目標（資産防衛ライン含む）に ¥$deficit 円足りず、間に合いません！毎月の支出をあと ¥$deficit 円セーブする必要があります。"
+                }
+            }
+
+            TargetAnalysisResult(
+                averageMonthlySaving = averageMonthlySaving,
+                monthsLeft = monthsLeft,
+                amountNeeded = amountNeeded,
+                isOnTrack = isOnTrack,
+                requiredMonthlySaving = requiredMonthlySaving,
+                adviceMessage = adviceMessage
+            )
+        }
+    }
 }
+
+data class TargetAnalysisResult(
+    val averageMonthlySaving: Int,      // 月平均の貯金額
+    val monthsLeft: Double,             // 期限までの残り月数
+    val amountNeeded: Int,              // あと必要な金額
+    val isOnTrack: Boolean,             // 今のペースで間に合うか
+    val requiredMonthlySaving: Int,     // 間に合わせるために必要な毎月の貯金額
+    val adviceMessage: String           // 画面に表示するアドバイステキスト
+)

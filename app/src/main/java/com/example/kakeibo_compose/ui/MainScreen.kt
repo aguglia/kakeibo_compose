@@ -57,6 +57,14 @@ fun MainScreen() {
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                 )
 
+                // 💡 【ここを追加！】目標管理メニューを追加
+                NavigationDrawerItem(
+                    label = { Text("🎯 目標の管理・分析") },
+                    selected = selectedTab == 5, // 💡 新しいタブ番号「5」を割り当て
+                    onClick = { selectedTab = 5; scope.launch { drawerState.close() } },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+
                 // 💡 【ここを追加！】ドロワーの最下部に設定画面への移動ボタンを配置
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                 NavigationDrawerItem(
@@ -112,6 +120,7 @@ fun MainScreen() {
                         // 💡 今開いている画面に合わせて上部のタイトルを優しく可変させます
                         val barTitle = when (selectedTab) {
                             4 -> "アプリ設定"
+                            5 -> "目標設定と分析"
                             else -> "家計簿アプリ"
                         }
                         Text(barTitle, fontWeight = FontWeight.Bold)
@@ -144,7 +153,8 @@ fun MainScreen() {
                     1 -> InputScreen(isIncome = true, totalAsset = totalAsset, thisMonthExpense = thisMonthExpense, viewModel = viewModel)
                     2 -> HistoryScreen(kakeiboList = kakeiboList, viewModel = viewModel)
                     3 -> CategoryManagementScreen(viewModel = viewModel)
-                    4 -> SettingScreen(viewModel = viewModel) // 💡 ここを追加！
+                    4 -> SettingScreen(viewModel = viewModel)
+                    5 -> TargetScreen(viewModel = viewModel)// 💡 ここを追加！
                 }
             }
         }

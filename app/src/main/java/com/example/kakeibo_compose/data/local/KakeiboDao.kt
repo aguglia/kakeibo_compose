@@ -1,9 +1,11 @@
 package com.example.kakeibo_compose.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import com.example.kakeibo_compose.data.entity.BudgetEntity
 import com.example.kakeibo_compose.data.entity.CategorySelectionItem
 import com.example.kakeibo_compose.data.entity.MiddleCategoryEntity
@@ -11,6 +13,7 @@ import com.example.kakeibo_compose.data.entity.SubCategoryEntity
 import com.example.kakeibo_compose.data.entity.KakeiboEntity
 import com.example.kakeibo_compose.data.entity.KakeiboDisplayItem
 import com.example.kakeibo_compose.data.entity.MiddleCategoryWithBudget
+import com.example.kakeibo_compose.data.entity.TargetEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -184,4 +187,42 @@ interface KakeiboDao {
     // 指定した中カテゴリの予算額を取得する
     @Query("SELECT amount FROM budget_table WHERE middle_category_id = :middleCategoryId")
     fun getBudgetAmount(middleCategoryId: Int): Flow<Int?>
+
+    // ====================================================
+    // 🎯 目標設定機能用のクエリ
+    // ====================================================
+
+    @Query("SELECT * FROM target_table ORDER BY is_completed ASC, deadline_date ASC")
+    fun getAllTargets(): Flow<List<TargetEntity>>
+
+    @Insert
+    suspend fun insertTarget(target: TargetEntity)
+
+    @Update
+    suspend fun updateTarget(target: TargetEntity)
+
+    @Query("DELETE FROM target_table WHERE id = :targetId")
+    suspend fun deleteTarget(targetId: Int)
+
+    // 💡 分析用：直近1年間の月ごとの「収入合計」と「支出合計」をまとめて集計するクエリ
+    // 結果を受け取るためのシンプルなデータ構造（KakeiboMonthSummary）も下に定義します
+    @Query("""
+        SELECT 
+            strftime('%Y-%m', k.date) AS month,
+            SUM(CASE WHEN m.is_income = 1 THEN k.amount ELSE 0 END) AS total_income,
+            SUM(CASE WHEN m.is_income = 0 THEN k.amount ELSE 0 END) AS total_expense
+        FROM kakeibo_table k
+        INNER JOIN sub_category_table s ON k.sub_category_id = s.id
+        INNER JOIN middle_category_table m ON s.middle_category_id = m.id
+        WHERE k.date >= date('now', '-1 year') AND k.is_system = 0 
+        GROUP BY month
+        ORDER BY month DESC
+    """)
+    fun getMonthlyAnalysisData(): Flow<List<KakeiboMonthSummary>>
 }
+
+data class KakeiboMonthSummary(
+    val month: String,
+    @ColumnInfo(name = "total_income") val totalIncome: Int,
+    @ColumnInfo(name = "total_expense") val totalExpense: Int
+)
