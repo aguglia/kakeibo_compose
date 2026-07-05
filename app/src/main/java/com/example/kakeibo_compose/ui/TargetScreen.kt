@@ -14,6 +14,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -98,22 +100,30 @@ fun TargetScreen(viewModel: KakeiboViewModel) {
                         modifier = Modifier.weight(1f)
                     )
 
-                    // 💡 期限入力欄を「読み取り専用」にし、タップしたらカレンダーが開くように変更！
+                    // 💡 タップイベントを確実にTextFieldから横取りする魔法のオブジェクト
+                    val dateInteractionSource = remember { MutableInteractionSource() }
+                    val isDatePressed by dateInteractionSource.collectIsPressedAsState()
+
+                    // タップを検知したらカレンダーを開くフラグを立てる
+                    LaunchedEffect(isDatePressed) {
+                        if (isDatePressed) {
+                            showDatePicker = true
+                        }
+                    }
+
                     OutlinedTextField(
                         value = deadlineText,
                         onValueChange = {},
-                        readOnly = true, // 👈 キーボード入力を完全無効化
+                        readOnly = true, // キーボード入力を完全無効化
                         label = { Text("期限") },
                         placeholder = { Text("タップして選択") },
                         singleLine = true,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { showDatePicker = true }, // 👈 タップでカレンダー起動
+                        modifier = Modifier.weight(1f),
+                        interactionSource = dateInteractionSource, // 👈 これで確実無比にタップを検知！
                         enabled = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                            disabledBorderColor = MaterialTheme.colorScheme.outline,
-                            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
                         )
                     )
                 }

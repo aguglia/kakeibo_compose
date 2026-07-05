@@ -134,7 +134,7 @@ interface KakeiboDao {
         FROM sub_category_table s
         INNER JOIN middle_category_table m ON s.middle_category_id = m.id
         LEFT JOIN kakeibo_table k ON s.id = k.sub_category_id
-        WHERE m.is_Income = :isIncome
+        WHERE m.is_Income = :isIncome AND m.is_system = 0
         GROUP BY s.id
         ORDER BY COUNT(k.id) DESC, s.id ASC
     """)
