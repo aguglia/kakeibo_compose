@@ -313,6 +313,78 @@ class KakeiboViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    // 💡 中カテゴリと予算の保存（新規追加・編集を完全一本化 ＆ 歴史UPSERT連動）
+    fun saveMiddleCategoryWithBudget(
+        middleId: Int, // 💡 新規追加のときは 0、編集のときはそのカテゴリのIDを渡す
+        name: String,
+        isIncome: Boolean,
+        budgetAmount: Int?,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                // 1. バリデーション
+                if (name.isBlank()) {
+                    onResult(false, "カテゴリ名を入力してください")
+                    return@launch
+                }
+
+                if (!isIncome && (budgetAmount == null || budgetAmount <= 0)) {
+                    onResult(false, "毎月の予算を設定してください")
+                    return@launch
+                }
+
+                // 2. 重複チェック（新規ならexcludeId=0で動き、編集なら自身のIDを除外する）
+                val isDuplicate = repository.isMiddleCategoryDuplicate(isIncome, name, excludeId = middleId)
+                if (isDuplicate) {
+                    onResult(false, "「${name}」は既に登録されています")
+                    return@launch
+                }
+
+                // 3. データベースへの保存・更新処理
+                val targetMiddleId = if (middleId == 0) {
+                    // 新規追加
+                    repository.insertMiddleCategory(MiddleCategoryEntity(name = name, isIncome = isIncome)).toInt()
+                } else {
+                    // 既存編集
+                    repository.updateMiddleCategoryName(middleId, name)
+                    middleId
+                }
+
+                // 4. 予算と歴史の処理
+                if (!isIncome && budgetAmount != null) {
+                    // 最新予算を上書き
+                    repository.insertBudget(BudgetEntity(middleCategoryId = targetMiddleId, amount = budgetAmount))
+
+                    // 📊 新規だろうが編集だろうが、問答無用で「当日の年月」で100%歴史を刻む！
+                    val currentYearMonth = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        java.time.YearMonth.now().toString()
+                    } else {
+                        val cal = java.util.Calendar.getInstance()
+                        String.format(java.util.Locale.getDefault(), "%04d-%02d", cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH) + 1)
+                    }
+
+                    repository.upsertBudgetHistory(
+                        BudgetHistoryEntity(
+                            yearMonth = currentYearMonth,
+                            middleCategoryId = targetMiddleId,
+                            budgetAmount = budgetAmount
+                        )
+                    )
+                } else {
+                    // 収入の場合、または予算が空にされた場合は予算データを削除
+                    repository.deleteBudgetByMiddle(targetMiddleId)
+                }
+
+                val successMsg = if (middleId == 0) "中カテゴリを追加しました" else "変更を保存しました"
+                onResult(true, successMsg)
+            } catch (e: Exception) {
+                val failMsg = if (middleId == 0) "追加に失敗しました" else "保存に失敗しました"
+                onResult(false, "$failMsg: ${e.localizedMessage}")
+            }
+        }
+    }
+
     // 💡 【重要】中カテゴリの削除（小カテゴリがない場合のみ）
     fun deleteMiddleCategorySafety(middleId: Int, onResult: (Boolean, String) -> Unit) {
         viewModelScope.launch {
@@ -496,11 +568,15 @@ class KakeiboViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    /**
-     * 指定された年月の「予算 vs 実績」データを取得する
-     */
-    fun getMonthlyAchievement(yearMonth: String): Flow<List<MonthlyAchievementItem>> {
-        return repository.getMonthlyAchievement(yearMonth)
+    fun getYearlyAchievement(year: String, isIncome: Boolean): Flow<List<MonthlyAchievementItem>> {
+        val isIncomeInt = if (isIncome) 1 else 0
+        return repository.getYearlyAchievement(year, isIncomeInt)
+    }
+
+    // 既存の月間側も isIncome を受け取れるように少しだけ口を広げます
+    fun getMonthlyAchievement(yearMonth: String, isIncome: Boolean): Flow<List<MonthlyAchievementItem>> {
+        val isIncomeInt = if (isIncome) 1 else 0
+        return repository.getMonthlyAchievement(yearMonth, isIncomeInt)
     }
 }
 

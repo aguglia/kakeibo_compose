@@ -133,7 +133,12 @@ fun CategoryManagementScreen(viewModel: KakeiboViewModel) {
                 val isInputValid = newCategoryName.isNotBlank() && (isIncomeTab || newBudgetText.toIntOrNull() != null)
                 TextButton(
                     onClick = {
-                        viewModel.addMiddleCategoryWithBudget(newCategoryName, isIncomeTab, newBudgetText.toIntOrNull()) { success, msg ->
+                        viewModel.saveMiddleCategoryWithBudget(
+                            middleId = 0, // 👈 新規なので 0
+                            name = newCategoryName,
+                            isIncome = isIncomeTab,
+                            budgetAmount = newBudgetText.toIntOrNull()
+                        ) { success, msg ->
                             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                             if (success) showAddDialog = false
                         }
@@ -169,7 +174,12 @@ fun CategoryManagementScreen(viewModel: KakeiboViewModel) {
                 val isInputValid = inputName.isNotBlank() && (isIncomeTab || budgetText.toIntOrNull() != null)
                 TextButton(
                     onClick = {
-                        viewModel.updateMiddleCategoryWithBudget(middleEntity.id, inputName, isIncomeTab, budgetText.toIntOrNull()) { success, msg ->
+                        viewModel.saveMiddleCategoryWithBudget(
+                            middleId = middleEntity.id, // 👈 既存なのでそのID
+                            name = inputName,
+                            isIncome = isIncomeTab,
+                            budgetAmount = budgetText.toIntOrNull()
+                        ) { success, msg ->
                             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                             if (success) editingMiddleCategory = null
                         }

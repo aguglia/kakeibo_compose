@@ -228,23 +228,67 @@ interface KakeiboDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertBudgetHistory(budgetHistory: BudgetHistoryEntity)
 
-    // 💡 特定の年月の「中カテゴリ予算履歴」と「中カテゴリの実際の支出合計」を結合して引っこ抜く
+    // 📊 【月間実績】（システム用カテゴリを完全除外）
     @Query("""
         SELECT 
             m.id AS middleCategoryId,
             m.name AS middleCategoryName,
-            COALESCE(bh.budget_amount, 0) AS budgetAmount,
-            COALESCE(SUM(CASE WHEN k.is_system = 0 THEN k.amount ELSE 0 END), 0) AS actualExpenseAmount
+            
+            -- 指定された月の履歴。なければ0
+            COALESCE(
+                (SELECT bh.budget_amount 
+                 FROM budget_history_table bh 
+                 WHERE bh.middle_category_id = m.id AND bh.year_month = :yearMonth),
+                0
+            ) AS budgetAmount,
+            
+            -- その月の実際の合計（is_system = 0 の通常データのみ集計）
+            COALESCE(
+                (SELECT SUM(k.amount) 
+                 FROM kakeibo_table k
+                 INNER JOIN sub_category_table s ON k.sub_category_id = s.id
+                 WHERE s.middle_category_id = m.id 
+                   AND k.is_system = 0 
+                   AND strftime('%Y-%m', k.date) = :yearMonth),
+                0
+            ) AS actualExpenseAmount
+
         FROM middle_category_table m
-        -- その年月の予算履歴を中カテゴリIDで結合
-        LEFT JOIN budget_history_table bh ON m.id = bh.middle_category_id AND bh.year_month = :yearMonth
-        -- 実際の支出を、子カテゴリを仲介して中カテゴリIDで結合
-        LEFT JOIN sub_category_table s ON s.middle_category_id = m.id
-        LEFT JOIN kakeibo_table k ON s.id = k.sub_category_id AND strftime('%Y-%m', k.date) = :yearMonth
-        WHERE m.is_income = 0 -- 支出カテゴリのみ
-        GROUP BY m.id
+        WHERE m.is_income = :isIncome
+          AND m.is_system = 0 -- 👈 💡中カテゴリ自体のシステムフラグが0の通常データのみに絞り込む
     """)
-    fun getMonthlyAchievement(yearMonth: String): Flow<List<MonthlyAchievementItem>>
+    fun getMonthlyAchievement(yearMonth: String, isIncome: Int): Flow<List<MonthlyAchievementItem>>
+
+    // 📅 【年間実績】（システム用カテゴリを完全除外）
+    @Query("""
+        SELECT 
+            m.id AS middleCategoryId,
+            m.name AS middleCategoryName,
+            
+            -- 1年間の予算累計
+            COALESCE(
+                (SELECT SUM(bh.budget_amount) 
+                 FROM budget_history_table bh 
+                 WHERE bh.middle_category_id = m.id AND strftime('%Y', bh.year_month || '-01') = :year),
+                0
+            ) AS budgetAmount,
+            
+            -- 1年間の実際の累計
+            COALESCE(
+                (SELECT SUM(k.amount) 
+                 FROM kakeibo_table k
+                 INNER JOIN sub_category_table s ON k.sub_category_id = s.id
+                 WHERE s.middle_category_id = m.id 
+                   AND k.is_system = 0 
+                   AND strftime('%Y', k.date) = :year),
+                0
+            ) AS actualExpenseAmount
+
+        FROM middle_category_table m
+        WHERE m.is_income = :isIncome
+          AND m.is_system = 0 -- 👈 💡年間実績側も同様にシステムカテゴリを除外
+    """)
+    fun getYearlyAchievement(year: String, isIncome: Int): Flow<List<MonthlyAchievementItem>>
 }
 
 data class KakeiboMonthSummary(

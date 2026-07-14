@@ -136,6 +136,13 @@ class KakeiboRepository(private val kakeiboDao: KakeiboDao) {
     // 📊 予算履歴 ＆ 月間実績の取得
     suspend fun upsertBudgetHistory(budgetHistory: BudgetHistoryEntity) = kakeiboDao.upsertBudgetHistory(budgetHistory)
 
-    fun getMonthlyAchievement(yearMonth: String): Flow<List<MonthlyAchievementItem>> =
-        kakeiboDao.getMonthlyAchievement(yearMonth)
+    // 📊 月間実績の仲介
+    fun getMonthlyAchievement(yearMonth: String, isIncome: Int): Flow<List<MonthlyAchievementItem>> {
+        return kakeiboDao.getMonthlyAchievement(yearMonth, isIncome)
+    }
+
+    // 📅 年間実績の仲介
+    fun getYearlyAchievement(year: String, isIncome: Int): Flow<List<MonthlyAchievementItem>> {
+        return kakeiboDao.getYearlyAchievement(year, isIncome)
+    }
 }
