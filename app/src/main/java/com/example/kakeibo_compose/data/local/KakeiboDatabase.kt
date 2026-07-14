@@ -10,6 +10,7 @@ import com.example.kakeibo_compose.data.entity.KakeiboEntity
 import com.example.kakeibo_compose.data.entity.MiddleCategoryEntity
 import com.example.kakeibo_compose.data.entity.SubCategoryEntity
 import com.example.kakeibo_compose.data.entity.TargetEntity
+import com.example.kakeibo_compose.data.entity.BudgetHistoryEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -20,9 +21,10 @@ import kotlinx.coroutines.launch
         SubCategoryEntity::class,
         KakeiboEntity::class,
         BudgetEntity::class,
-        TargetEntity::class
+        TargetEntity::class,
+        BudgetHistoryEntity::class
     ],
-    version = 5, // 💡 バージョンを「4」にアップ！
+    version = 6, // 💡 バージョンを「6」にアップ！
     exportSchema = false
 )
 abstract class KakeiboDatabase : RoomDatabase() {

@@ -1,6 +1,7 @@
 package com.example.kakeibo_compose.data.repository
 
 import com.example.kakeibo_compose.data.entity.BudgetEntity
+import com.example.kakeibo_compose.data.entity.BudgetHistoryEntity
 import com.example.kakeibo_compose.data.entity.CategorySelectionItem
 import com.example.kakeibo_compose.data.entity.MiddleCategoryEntity
 import com.example.kakeibo_compose.data.entity.MiddleCategoryWithBudget
@@ -10,6 +11,7 @@ import com.example.kakeibo_compose.data.entity.KakeiboDisplayItem
 import com.example.kakeibo_compose.data.entity.TargetEntity
 import com.example.kakeibo_compose.data.local.KakeiboDao
 import com.example.kakeibo_compose.data.local.KakeiboMonthSummary
+import com.example.kakeibo_compose.data.local.MonthlyAchievementItem
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -130,4 +132,10 @@ class KakeiboRepository(private val kakeiboDao: KakeiboDao) {
     suspend fun insertTarget(target: TargetEntity) = kakeiboDao.insertTarget(target)
     suspend fun updateTarget(target: TargetEntity) = kakeiboDao.updateTarget(target)
     suspend fun deleteTarget(targetId: Int) = kakeiboDao.deleteTarget(targetId)
+
+    // 📊 予算履歴 ＆ 月間実績の取得
+    suspend fun upsertBudgetHistory(budgetHistory: BudgetHistoryEntity) = kakeiboDao.upsertBudgetHistory(budgetHistory)
+
+    fun getMonthlyAchievement(yearMonth: String): Flow<List<MonthlyAchievementItem>> =
+        kakeiboDao.getMonthlyAchievement(yearMonth)
 }

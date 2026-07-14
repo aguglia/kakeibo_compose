@@ -57,6 +57,13 @@ fun MainScreen() {
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                 )
 
+                NavigationDrawerItem(
+                    label = { Text("📊 月間・年間実績確認") },
+                    selected = selectedTab == 6,
+                    onClick = { selectedTab = 6; scope.launch { drawerState.close() } },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+
                 // 💡 【ここを追加！】目標管理メニューを追加
                 NavigationDrawerItem(
                     label = { Text("🎯 目標の管理・分析") },
@@ -121,6 +128,7 @@ fun MainScreen() {
                         val barTitle = when (selectedTab) {
                             4 -> "アプリ設定"
                             5 -> "目標設定と分析"
+                            6 -> "月間・年間実績確認"
                             else -> "家計簿アプリ"
                         }
                         Text(barTitle, fontWeight = FontWeight.Bold)
@@ -154,7 +162,8 @@ fun MainScreen() {
                     2 -> HistoryScreen(kakeiboList = kakeiboList, viewModel = viewModel)
                     3 -> CategoryManagementScreen(viewModel = viewModel)
                     4 -> SettingScreen(viewModel = viewModel)
-                    5 -> TargetScreen(viewModel = viewModel)// 💡 ここを追加！
+                    5 -> TargetScreen(viewModel = viewModel)
+                    6 -> MonthlyAchievementScreen(viewModel = viewModel)
                 }
             }
         }

@@ -7,6 +7,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import com.example.kakeibo_compose.data.entity.BudgetEntity
+import com.example.kakeibo_compose.data.entity.BudgetHistoryEntity
 import com.example.kakeibo_compose.data.entity.CategorySelectionItem
 import com.example.kakeibo_compose.data.entity.MiddleCategoryEntity
 import com.example.kakeibo_compose.data.entity.SubCategoryEntity
@@ -219,10 +220,42 @@ interface KakeiboDao {
         ORDER BY month DESC
     """)
     fun getMonthlyAnalysisData(): Flow<List<KakeiboMonthSummary>>
+
+    // ====================================================
+    // 📊 予算履歴 ＆ 実績確認用のクエリ（中カテゴリ集計版）
+    // ====================================================
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertBudgetHistory(budgetHistory: BudgetHistoryEntity)
+
+    // 💡 特定の年月の「中カテゴリ予算履歴」と「中カテゴリの実際の支出合計」を結合して引っこ抜く
+    @Query("""
+        SELECT 
+            m.id AS middleCategoryId,
+            m.name AS middleCategoryName,
+            COALESCE(bh.budget_amount, 0) AS budgetAmount,
+            COALESCE(SUM(CASE WHEN k.is_system = 0 THEN k.amount ELSE 0 END), 0) AS actualExpenseAmount
+        FROM middle_category_table m
+        -- その年月の予算履歴を中カテゴリIDで結合
+        LEFT JOIN budget_history_table bh ON m.id = bh.middle_category_id AND bh.year_month = :yearMonth
+        -- 実際の支出を、子カテゴリを仲介して中カテゴリIDで結合
+        LEFT JOIN sub_category_table s ON s.middle_category_id = m.id
+        LEFT JOIN kakeibo_table k ON s.id = k.sub_category_id AND strftime('%Y-%m', k.date) = :yearMonth
+        WHERE m.is_income = 0 -- 支出カテゴリのみ
+        GROUP BY m.id
+    """)
+    fun getMonthlyAchievement(yearMonth: String): Flow<List<MonthlyAchievementItem>>
 }
 
 data class KakeiboMonthSummary(
     val month: String,
     @ColumnInfo(name = "total_income") val totalIncome: Int,
     @ColumnInfo(name = "total_expense") val totalExpense: Int
+)
+
+data class MonthlyAchievementItem(
+    val middleCategoryId: Int,
+    val middleCategoryName: String,
+    val budgetAmount: Int,           // 履歴から引いた中カテゴリ予算
+    val actualExpenseAmount: Int     // 中カテゴリ内の実際の支出合計
 )

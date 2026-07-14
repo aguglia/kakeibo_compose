@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.combine
 import com.example.kakeibo_compose.data.entity.BudgetEntity
+import com.example.kakeibo_compose.data.entity.BudgetHistoryEntity
 import com.example.kakeibo_compose.data.entity.CategorySelectionItem
 import com.example.kakeibo_compose.data.entity.MiddleCategoryEntity
 import com.example.kakeibo_compose.data.entity.SubCategoryEntity
@@ -12,6 +13,7 @@ import com.example.kakeibo_compose.data.entity.KakeiboEntity
 import com.example.kakeibo_compose.data.entity.MiddleCategoryWithBudget
 import com.example.kakeibo_compose.data.entity.TargetEntity
 import com.example.kakeibo_compose.data.local.KakeiboDatabase
+import com.example.kakeibo_compose.data.local.MonthlyAchievementItem
 import com.example.kakeibo_compose.data.local.SettingPreferences
 import com.example.kakeibo_compose.data.repository.KakeiboRepository
 import kotlinx.coroutines.flow.Flow
@@ -253,6 +255,8 @@ class KakeiboViewModel(application: Application) : AndroidViewModel(application)
     }
 
     // 💡 中カテゴリと予算の編集（更新）
+    // 💡 中カテゴリと予算の編集（更新）【予算履歴UPSERT自動連動版】
+    // 💡 中カテゴリと予算の編集（更新）
     fun updateMiddleCategoryWithBudget(middleId: Int, newName: String, isIncome: Boolean, budgetAmount: Int?, onResult: (Boolean, String) -> Unit) {
         viewModelScope.launch {
             try {
@@ -261,12 +265,15 @@ class KakeiboViewModel(application: Application) : AndroidViewModel(application)
                     return@launch
                 }
 
-                if (!isIncome && (budgetAmount == null || budgetAmount <= 0)) {
-                    onResult(false, "毎月の予算を設定してください")
-                    return@launch
+                // 💡 修正：収入（isIncome = true）のときは、予算チェックを完全にスキップさせる
+                if (!isIncome) {
+                    if (budgetAmount == null || budgetAmount <= 0) {
+                        onResult(false, "毎月の予算を設定してください")
+                        return@launch
+                    }
                 }
 
-                // 🛑 重複チェック（自分自身のmiddleIdを除外して、他のカテゴリと被っていないかチェック）
+                // 🛑 重複チェック
                 val isDuplicate = repository.isMiddleCategoryDuplicate(isIncome, newName, excludeId = middleId)
                 if (isDuplicate) {
                     onResult(false, "「${newName}」は既に登録されています")
@@ -275,11 +282,30 @@ class KakeiboViewModel(application: Application) : AndroidViewModel(application)
 
                 // チェックをパスしたら更新
                 repository.updateMiddleCategoryName(middleId, newName)
+
                 if (!isIncome && budgetAmount != null) {
+                    // 支出しっかり予算がある場合のみ最新と歴史を保存
                     repository.insertBudget(BudgetEntity(middleCategoryId = middleId, amount = budgetAmount))
+
+                    // 歴史に刻む
+                    val currentYearMonth = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        java.time.YearMonth.now().toString()
+                    } else {
+                        val cal = java.util.Calendar.getInstance()
+                        String.format(java.util.Locale.getDefault(), "%04d-%02d", cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH) + 1)
+                    }
+                    repository.upsertBudgetHistory(
+                        BudgetHistoryEntity(
+                            yearMonth = currentYearMonth,
+                            middleCategoryId = middleId,
+                            budgetAmount = budgetAmount
+                        )
+                    )
                 } else {
+                    // 💡 収入の場合、または予算が空にされた場合はここを通る（歴史には触らない）
                     repository.deleteBudgetByMiddle(middleId)
                 }
+
                 onResult(true, "変更を保存しました")
             } catch (e: Exception) {
                 onResult(false, "保存に失敗しました")
@@ -440,6 +466,41 @@ class KakeiboViewModel(application: Application) : AndroidViewModel(application)
                 adviceMessage = adviceMessage
             )
         }
+    }
+
+    // ====================================================
+    // 📊 予算履歴 ＆ 実績確認ロジック
+    // ====================================================
+
+    /**
+     * 💡 中カテゴリの予算を設定すると同時に、当月の履歴テーブルへも自動UPSERTする関数
+     * （既存の予算設定ボタンの onClick からこれを呼び出すようにします）
+     */
+    fun saveBudgetWithHistory(middleCategoryId: Int, amount: Int) {
+        viewModelScope.launch {
+            // 1. 既存の最新予算テーブルを更新（またはインサート）
+            // ※プロジェクト内の実際の予算更新関数（例: repository.updateBudget等）に合わせてください
+            // repository.updateMiddleCategoryBudget(middleCategoryId, amount)
+
+            // 2. 現在の年月（yyyy-MM）を取得
+            val currentYearMonth = java.text.SimpleDateFormat("yyyy-MM", java.util.Locale.getDefault()).format(java.util.Date())
+
+            // 3. 予算履歴テーブルへUPSERT（無ければ新規、有れば上書き）
+            repository.upsertBudgetHistory(
+                BudgetHistoryEntity(
+                    yearMonth = currentYearMonth,
+                    middleCategoryId = middleCategoryId,
+                    budgetAmount = amount
+                )
+            )
+        }
+    }
+
+    /**
+     * 指定された年月の「予算 vs 実績」データを取得する
+     */
+    fun getMonthlyAchievement(yearMonth: String): Flow<List<MonthlyAchievementItem>> {
+        return repository.getMonthlyAchievement(yearMonth)
     }
 }
 
